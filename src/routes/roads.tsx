@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/wb/PageShell";
 import { useApp } from "@/lib/weather/AppContext";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
+import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 
 export const Route = createFileRoute("/roads")({
   head: () => ({
@@ -34,38 +35,65 @@ function Content() {
 
   return (
     <>
-      <section className="rounded-3xl p-6 shadow-[var(--shadow-soft)]" style={{ background: "var(--gradient-sky)" }}>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{selected.label}</p>
-        <div className="mt-1 flex items-center gap-3">
-          <div className="text-5xl">{brief.icon}</div>
+      <section className="rounded-3xl p-5 shadow-[var(--shadow-soft)]" style={{ background: "var(--gradient-sky)" }}>
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{selected.label}</p>
+        <div className="mt-1.5 flex items-center gap-3">
+          <div className="text-4xl">{brief.icon}</div>
           <div>
-            <h2 className="text-xl font-semibold">{brief.emoji} {brief.level[0].toUpperCase() + brief.level.slice(1)} traffic</h2>
-            <p className="text-sm text-muted-foreground">{brief.summary}</p>
+            <h2 className="text-lg font-semibold flex items-center gap-1.5">
+              <span>{brief.emoji}</span>
+              <span>{brief.level[0].toUpperCase() + brief.level.slice(1)} traffic</span>
+            </h2>
+            <p className="text-[13px] text-muted-foreground">{brief.summary}</p>
           </div>
         </div>
-        <div className="mt-3 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
-             style={{ backgroundColor: `color-mix(in oklab, ${levelTone} 18%, transparent)`, color: levelTone }}>
-          Traffic level · {brief.level}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+            style={{ backgroundColor: `color-mix(in oklab, ${levelTone} 18%, transparent)`, color: levelTone }}
+          >
+            Traffic · {brief.level}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-secondary/80 px-2 py-0.5 text-[10px] font-medium text-foreground/80">
+            <span>{brief.roadEmoji}</span>
+            <span>Roads · {brief.roadLabel}</span>
+          </span>
         </div>
       </section>
 
-      <section className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
-        <h3 className="text-sm font-semibold">Weather impact on roads</h3>
-        <p className="mt-1 text-sm text-muted-foreground">{brief.weatherImpact}</p>
-      </section>
+      <CollapsibleCard
+        id="roads:impact"
+        title="Weather impact on roads"
+        icon={brief.roadEmoji}
+        defaultOpen
+        summary={brief.weatherImpact}
+      >
+        <p className="text-sm text-muted-foreground">{brief.weatherImpact}</p>
+      </CollapsibleCard>
 
-      <section className="rounded-2xl bg-card p-5 shadow-[var(--shadow-card)]">
-        <h3 className="text-sm font-semibold">Driving recommendation</h3>
-        <p className="mt-1 text-sm text-foreground">{brief.recommendation}</p>
-      </section>
+      <CollapsibleCard
+        id="roads:recommendation"
+        title="Driving recommendation"
+        icon="🧭"
+        defaultOpen
+        summary={brief.recommendation}
+      >
+        <p className="text-sm text-foreground">{brief.recommendation}</p>
+      </CollapsibleCard>
 
       {brief.alerts.length > 0 && (
-        <section className="rounded-2xl border border-destructive/40 bg-destructive/5 p-4">
-          <h3 className="text-sm font-semibold flex items-center gap-2"><span>⚠️</span>Road alerts</h3>
-          <ul className="mt-2 space-y-1 text-sm">
+        <CollapsibleCard
+          id="roads:alerts"
+          title="Road alerts"
+          icon="⚠️"
+          tone="alert"
+          defaultOpen
+          summary={`${brief.alerts.length} alert${brief.alerts.length === 1 ? "" : "s"}`}
+        >
+          <ul className="space-y-1 text-sm">
             {brief.alerts.map((a, i) => <li key={i}>• {a}</li>)}
           </ul>
-        </section>
+        </CollapsibleCard>
       )}
 
       <p className="text-center text-[11px] text-muted-foreground">

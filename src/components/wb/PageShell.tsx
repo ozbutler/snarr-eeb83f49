@@ -7,7 +7,10 @@ export function PageShell({ children }: { children: ReactNode }) {
   const { loading, error, forecast, refresh } = useApp();
 
   return (
-    <main className="mx-auto max-w-md px-4 py-4 pb-24 space-y-4 animate-in fade-in">
+    <main
+      className="mx-auto max-w-md px-4 py-3 space-y-3 animate-fade-in"
+      style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 6rem)" }}
+    >
       {error && <ErrorCard message={error} onRetry={refresh} />}
       {loading && !forecast ? <LoadingSkeleton lines={3} /> : children}
     </main>

@@ -15,7 +15,7 @@ export function LocationSelector() {
         <select
           value={selected.id}
           onChange={(e) => setSelected(e.target.value)}
-          className="w-full appearance-none h-10 pl-4 pr-9 rounded-full bg-card text-foreground text-sm font-medium border border-border shadow-[var(--shadow-card)] focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full appearance-none h-9 pl-3.5 pr-8 rounded-full bg-card text-foreground text-[13px] font-medium border border-border shadow-[var(--shadow-card)] focus:outline-none focus:ring-2 focus:ring-ring"
         >
           {locations.map((l) => (
             <option key={l.id} value={l.id}>
@@ -28,16 +28,16 @@ export function LocationSelector() {
 
       <button
         onClick={() => setShowAdd(true)}
-        className="h-10 w-10 rounded-full bg-primary text-primary-foreground hover:opacity-90 transition flex items-center justify-center text-base shadow-[var(--shadow-card)]"
+        className="h-9 w-9 rounded-full bg-secondary text-secondary-foreground hover:bg-accent transition flex items-center justify-center text-sm"
         aria-label="Add location"
       >
-        ➕
+        +
       </button>
 
       {canRemove && (
         <button
           onClick={() => setConfirmRemove(true)}
-          className="h-10 w-10 rounded-full bg-secondary text-secondary-foreground hover:bg-accent transition flex items-center justify-center"
+          className="h-9 w-9 rounded-full bg-secondary text-secondary-foreground hover:bg-accent transition flex items-center justify-center text-xs"
           aria-label="Remove location"
         >
           🗑️

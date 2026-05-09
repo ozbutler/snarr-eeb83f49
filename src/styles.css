@@ -73,13 +73,13 @@
 :root {
   --radius: 1rem;
   /* Soft sky-blue/slate weather palette */
-  --background: oklch(0.985 0.01 240);
-  --foreground: oklch(0.25 0.04 250);
+  --background: oklch(0.985 0.008 245);
+  --foreground: oklch(0.24 0.035 250);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.25 0.04 250);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.25 0.04 250);
-  --primary: oklch(0.55 0.14 240);
+  --primary: oklch(0.52 0.11 240);
   --primary-foreground: oklch(0.99 0.005 240);
   --secondary: oklch(0.95 0.02 240);
   --secondary-foreground: oklch(0.3 0.05 250);
@@ -105,7 +105,7 @@
   --confidence-low: oklch(0.68 0.18 30);
 
   /* Gradients */
-  --gradient-sky: linear-gradient(160deg, oklch(0.92 0.05 240), oklch(0.97 0.02 220));
+  --gradient-sky: linear-gradient(160deg, oklch(0.93 0.035 240), oklch(0.975 0.015 220));
   --gradient-dawn: linear-gradient(160deg, oklch(0.88 0.07 50), oklch(0.93 0.05 290));
   --gradient-night: linear-gradient(160deg, oklch(0.35 0.08 270), oklch(0.5 0.1 240));
   --gradient-card: linear-gradient(180deg, oklch(1 0 0), oklch(0.97 0.012 240));
