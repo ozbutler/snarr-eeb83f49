@@ -4,7 +4,7 @@ import { MorningSummaryCard } from "@/components/wb/MorningSummaryCard";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { NewsBriefCard } from "@/components/wb/NewsBriefCard";
 import { useApp } from "@/lib/weather/AppContext";
-import { describeCode, fmtTemp, outfitFor, rainWindow } from "@/lib/weather/weatherUtils";
+import { describeCode, fmtTemp } from "@/lib/weather/weatherUtils";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
 
 export const Route = createFileRoute("/")({
@@ -15,99 +15,38 @@ function Index() {
   return (
     <PageShell>
       <MorningSummaryCard />
-      <RainCollapsible />
-      <OutfitCollapsible />
-      <NextDaysCollapsible />
+      <NextDaysCard />
       <RoadsCollapsible />
       <NewsBriefCard />
     </PageShell>
   );
 }
 
-function RainCollapsible() {
-  const { forecast } = useApp();
-  if (!forecast) return null;
-  const { today, hourly, alerts } = forecast;
-  const window = rainWindow(hourly);
-  const summary = `${today.rainChance}% rain · ${window ?? "no rain expected"}`;
-  return (
-    <CollapsibleCard id="home:rain" title="Rain & Alerts" icon="🌧️" summary={summary}>
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-xl bg-secondary/60 p-3">
-          <div className="text-[11px] text-muted-foreground">Rain chance</div>
-          <div className="text-xl font-semibold mt-0.5">{today.rainChance}%</div>
-        </div>
-        <div className="rounded-xl bg-secondary/60 p-3">
-          <div className="text-[11px] text-muted-foreground">Most likely</div>
-          <div className="text-sm font-medium mt-1">{window ?? "No rain expected"}</div>
-        </div>
-      </div>
-      <div className="mt-3">
-        {alerts.length === 0 ? (
-          <p className="text-xs text-muted-foreground">✅ No major weather alerts.</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {alerts.map((a, i) => (
-              <li key={i} className="text-xs text-destructive flex gap-2">
-                <span>⚠️</span><span>{a}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </CollapsibleCard>
-  );
-}
-
-function OutfitCollapsible() {
-  const { forecast } = useApp();
-  if (!forecast) return null;
-  const { today } = forecast;
-  const outfit = outfitFor(today.high, today.rainChance);
-  const summary = outfit.extra ? `${outfit.main} + umbrella` : outfit.main;
-  return (
-    <CollapsibleCard id="home:outfit" title="What to Wear" icon="👕" summary={summary}>
-      <p className="text-base">{outfit.main}.</p>
-      <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
-        {describeCode(today.weatherCode).label === "Clear" && <li>• Sunglasses recommended.</li>}
-        {outfit.extra && <li>• {outfit.extra}.</li>}
-        {!outfit.extra && today.rainChance < 20 && <li>• Umbrella probably not needed.</li>}
-      </ul>
-    </CollapsibleCard>
-  );
-}
-
-function NextDaysCollapsible() {
+function NextDaysCard() {
   const { forecast, units } = useApp();
   if (!forecast) return null;
   const days = forecast.daily.slice(1, 4);
-  const summary = days
-    .map((d) => {
-      const day = new Date(d.date).toLocaleDateString(undefined, { weekday: "short" });
-      return `${day} ${describeCode(d.weatherCode).emoji} ${Math.round(d.high)}°`;
-    })
-    .join(" · ");
   return (
-    <CollapsibleCard id="home:next3" title="Next 3 Days" icon="📅" summary={summary}>
-      <div className="grid grid-cols-3 gap-2">
+    <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
+      <div className="flex items-center justify-between px-1">
+        <h2 className="text-[13px] font-semibold text-foreground">Next 3 Days</h2>
+        <Link to="/week" className="text-[11px] text-primary font-medium">Full week →</Link>
+      </div>
+      <div className="mt-2 grid grid-cols-3 gap-1.5">
         {days.map((d) => {
           const desc = describeCode(d.weatherCode);
           const day = new Date(d.date).toLocaleDateString(undefined, { weekday: "short" });
           return (
-            <div key={d.date} className="rounded-xl bg-secondary/60 p-2.5 text-center">
-              <div className="text-[11px] font-medium text-muted-foreground">{day}</div>
-              <div className="text-2xl mt-0.5">{desc.emoji}</div>
-              <div className="mt-0.5 text-sm font-semibold">{fmtTemp(d.high, units)}</div>
-              <div className="text-[10px] text-muted-foreground">{fmtTemp(d.low, units)}</div>
-              <div className="mt-0.5 text-[10px] text-muted-foreground">💧 {d.rainChance}%</div>
+            <div key={d.date} className="rounded-xl bg-secondary/50 px-2 py-2 text-center">
+              <div className="text-[10px] font-medium text-muted-foreground">{day}</div>
+              <div className="text-xl leading-none mt-1">{desc.emoji}</div>
+              <div className="mt-1 text-[12px] font-semibold">{fmtTemp(d.high, units)}</div>
+              <div className="text-[10px] text-muted-foreground">{fmtTemp(d.low, units)} · 💧{d.rainChance}%</div>
             </div>
           );
         })}
       </div>
-      <div className="mt-2 text-right">
-        <Link to="/week" className="text-xs text-primary font-medium">See full week →</Link>
-      </div>
-    </CollapsibleCard>
+    </section>
   );
 }
 

@@ -18,6 +18,7 @@ const LS_KEY_SELECTED = "wb.selectedLocation";
 const LS_KEY_UNITS = "wb.units";
 const LS_KEY_CURRENT_COORDS = "wb.currentCoords";
 const LS_KEY_CURRENT_LABEL = "wb.currentLabel";
+const LS_KEY_PERM = "wb.locPermStatus"; // "granted" | "denied"
 
 export type LocationPermission = "granted" | "denied" | "prompt" | "unsupported";
 
@@ -90,6 +91,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setCurrentLocationCoords(coords);
         setLocationPermission("granted");
         try { localStorage.setItem(LS_KEY_CURRENT_COORDS, JSON.stringify(coords)); } catch {}
+        try { localStorage.setItem(LS_KEY_PERM, "granted"); } catch {}
         const label = await reverseGeocode(coords.lat, coords.lon);
         if (label) {
           setCurrentLocationLabel(label);
@@ -98,13 +100,27 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       },
       () => {
         setLocationPermission("denied");
+        try { localStorage.setItem(LS_KEY_PERM, "denied"); } catch {}
       },
       { timeout: 10000, enableHighAccuracy: false, maximumAge: 5 * 60 * 1000 },
     );
   }, []);
 
-  // Auto-request on first mount.
+  // Auto-request on first mount only if not previously denied.
+  // - "granted": browser remembers, resolves silently.
+  // - unknown: trigger one initial prompt.
+  // - "denied": skip entirely (use saved selection / fallback city).
   useEffect(() => {
+    if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
+      setLocationPermission("unsupported");
+      return;
+    }
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(LS_KEY_PERM); } catch {}
+    if (stored === "denied") {
+      setLocationPermission("denied");
+      return;
+    }
     requestCurrentLocation();
   }, [requestCurrentLocation]);
 

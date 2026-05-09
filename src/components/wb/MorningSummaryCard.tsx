@@ -1,12 +1,15 @@
 import { useApp } from "@/lib/weather/AppContext";
-import { describeCode, fmtTemp, morningBrief } from "@/lib/weather/weatherUtils";
+import { describeCode, fmtTemp, morningBrief, outfitFor, rainWindow } from "@/lib/weather/weatherUtils";
 import { ConfidenceBadge, VerifiedBadge } from "./Confidence";
 
 export function MorningSummaryCard() {
   const { forecast, selected, units } = useApp();
   if (!forecast) return null;
-  const { current, today, confidence, sources } = forecast;
+  const { current, today, hourly, confidence, sources } = forecast;
   const desc = describeCode(today.weatherCode, current.isDay);
+  const window = rainWindow(hourly);
+  const outfit = outfitFor(today.high, today.rainChance);
+  const outfitLine = outfit.extra ? `${outfit.main}, ${outfit.extra.toLowerCase()}.` : `${outfit.main}.`;
 
   return (
     <section
@@ -36,6 +39,20 @@ export function MorningSummaryCard() {
       <p className="mt-3 text-[13px] leading-relaxed text-foreground/85">
         {morningBrief(today.high, today.low, today.rainChance, today.weatherCode)}
       </p>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-background/40 backdrop-blur-sm p-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Rain</div>
+          <div className="text-sm font-medium mt-0.5">
+            {today.rainChance}% · {window ?? "none expected"}
+          </div>
+        </div>
+        <div className="rounded-xl bg-background/40 backdrop-blur-sm p-2.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">What to wear</div>
+          <div className="text-sm font-medium mt-0.5">👕 {outfit.main}</div>
+        </div>
+      </div>
+      <p className="mt-2 text-[12px] text-foreground/70">{outfitLine}</p>
 
       <div className="mt-3 flex items-center justify-between gap-2">
         <ConfidenceBadge level={confidence} compact />
