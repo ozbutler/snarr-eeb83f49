@@ -1,15 +1,23 @@
 import { useState } from "react";
 import { useApp } from "@/lib/weather/AppContext";
 import { AddLocationModal } from "./AddLocationModal";
+import { MapPin } from "lucide-react";
 
 export function LocationSelector() {
-  const { locations, selected, setSelected, removeLocation } = useApp();
+  const {
+    locations, selected, setSelected, removeLocation,
+    locationPermission, requestCurrentLocation, currentLocationCoords,
+  } = useApp();
   const [showAdd, setShowAdd] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   const canRemove = selected.custom === true;
+  const current = locations.find((l) => l.current);
+  const defaults = locations.filter((l) => !l.current && !l.custom);
+  const customs = locations.filter((l) => l.custom);
 
   return (
+    <div className="space-y-1.5">
     <div className="flex items-center gap-1.5">
       <div className="relative flex-1">
         <select
@@ -17,14 +25,43 @@ export function LocationSelector() {
           onChange={(e) => setSelected(e.target.value)}
           className="w-full appearance-none h-9 pl-3.5 pr-8 rounded-full bg-card text-foreground text-[13px] font-medium border border-border shadow-[var(--shadow-card)] focus:outline-none focus:ring-2 focus:ring-ring"
         >
-          {locations.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.current ? "📍 " : ""}{l.label}
-            </option>
-          ))}
+          {current && (
+            <optgroup label="Live">
+              <option value={current.id}>{current.label}</option>
+            </optgroup>
+          )}
+          <optgroup label="Saved cities">
+            {defaults.map((l) => (
+              <option key={l.id} value={l.id}>{l.label}</option>
+            ))}
+          </optgroup>
+          {customs.length > 0 && (
+            <optgroup label="Custom">
+              {customs.map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">▾</span>
       </div>
+
+      <button
+        onClick={() => {
+          requestCurrentLocation();
+          if (currentLocationCoords) setSelected("current");
+        }}
+        title="Use current location"
+        aria-label="Use current location"
+        className={
+          "h-9 w-9 rounded-full transition flex items-center justify-center " +
+          (selected.current
+            ? "bg-primary/15 text-primary"
+            : "bg-secondary text-secondary-foreground hover:bg-accent")
+        }
+      >
+        <MapPin className="h-4 w-4" />
+      </button>
 
       <button
         onClick={() => setShowAdd(true)}
@@ -43,6 +80,18 @@ export function LocationSelector() {
           🗑️
         </button>
       )}
+    </div>
+
+    {locationPermission === "denied" && (
+      <p className="text-[10.5px] text-muted-foreground/90 px-1">
+        Location access denied — using default city. Enable in browser settings to use live location.
+      </p>
+    )}
+    {locationPermission === "unsupported" && (
+      <p className="text-[10.5px] text-muted-foreground/90 px-1">
+        Live location not supported on this device.
+      </p>
+    )}
 
       {showAdd && <AddLocationModal onClose={() => setShowAdd(false)} />}
 

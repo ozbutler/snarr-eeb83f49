@@ -10,8 +10,11 @@ const TABS = [
 ] as const;
 
 export function Header() {
-  const { units, toggleUnits, refresh, loading } = useApp();
+  const { units, toggleUnits, refresh, loading, forecast } = useApp();
   const { pathname } = useLocation();
+  const updatedLabel = forecast
+    ? `Updated ${new Date(forecast.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
+    : loading ? "Updating…" : "Your morning briefing";
 
   return (
     <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/75 border-b border-border/70" style={{ paddingTop: "env(safe-area-inset-top)" }}>
@@ -21,7 +24,7 @@ export function Header() {
             <h1 className="text-[17px] font-semibold tracking-tight text-foreground leading-tight">
               Weather Brief
             </h1>
-            <p className="text-[11px] text-muted-foreground/80 leading-tight">Your morning briefing</p>
+            <p className="text-[11px] text-muted-foreground/80 leading-tight">{updatedLabel}</p>
           </div>
           <div className="flex items-center gap-1">
             <button

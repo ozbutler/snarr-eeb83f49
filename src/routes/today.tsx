@@ -75,7 +75,7 @@ function TodayContent() {
         id="today:rain"
         title="Rain Timing"
         icon="🌧️"
-        defaultOpen
+
         summary={window ? `Most likely ${window}` : "No rain expected"}
       >
         <p className="text-sm text-muted-foreground">
@@ -87,7 +87,7 @@ function TodayContent() {
         id="today:wear"
         title="What to Wear"
         icon="👕"
-        defaultOpen
+
         summary={outfit.extra ? `${outfit.main} + umbrella` : outfit.main}
       >
         <p className="text-base font-medium">{outfit.main}.</p>

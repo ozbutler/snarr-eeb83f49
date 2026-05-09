@@ -181,3 +181,20 @@ export async function geocode(query: string): Promise<{ name: string; lat: numbe
   const region = r.admin1 ? `, ${r.admin1}` : r.country ? `, ${r.country}` : "";
   return { name: `${r.name}${region}`, lat: r.latitude, lon: r.longitude };
 }
+
+// ---- Reverse geocoding (BigDataCloud, no key) -----------------------------
+
+export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  try {
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const j = await res.json();
+    const city = j.city || j.locality || j.principalSubdivision;
+    const region = j.principalSubdivisionCode?.split("-")?.[1] || j.principalSubdivision || j.countryCode;
+    if (!city) return null;
+    return region && region !== city ? `${city}, ${region}` : city;
+  } catch {
+    return null;
+  }
+}

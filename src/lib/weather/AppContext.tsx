@@ -3,7 +3,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { LocationOption, Units, ForecastBundle } from "./types";
-import { fetchForecast } from "./weatherApi";
+import { fetchForecast, reverseGeocode } from "./weatherApi";
 
 const DEFAULT_LOCATIONS: LocationOption[] = [
   { id: "phl", label: "Philadelphia, PA", lat: 39.9526, lon: -75.1652 },
@@ -16,6 +16,10 @@ const DEFAULT_LOCATIONS: LocationOption[] = [
 const LS_KEY_LOCATIONS = "wb.customLocations";
 const LS_KEY_SELECTED = "wb.selectedLocation";
 const LS_KEY_UNITS = "wb.units";
+const LS_KEY_CURRENT_COORDS = "wb.currentCoords";
+const LS_KEY_CURRENT_LABEL = "wb.currentLabel";
+
+export type LocationPermission = "granted" | "denied" | "prompt" | "unsupported";
 
 interface AppContextValue {
   locations: LocationOption[];
@@ -31,6 +35,9 @@ interface AppContextValue {
   refresh: () => void;
   currentLocationCoords: { lat: number; lon: number } | null;
   setCurrentLocationCoords: (c: { lat: number; lon: number } | null) => void;
+  currentLocationLabel: string | null;
+  locationPermission: LocationPermission;
+  requestCurrentLocation: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -41,6 +48,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [selectedId, setSelectedId] = useState<string>("phl");
   const [units, setUnits] = useState<Units>("F");
   const [currentLocationCoords, setCurrentLocationCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [currentLocationLabel, setCurrentLocationLabel] = useState<string | null>(null);
+  const [locationPermission, setLocationPermission] = useState<LocationPermission>(
+    typeof navigator !== "undefined" && "geolocation" in navigator ? "prompt" : "unsupported"
+  );
   const [forecast, setForecast] = useState<ForecastBundle | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,18 +66,47 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (s) setSelectedId(s);
       const u = localStorage.getItem(LS_KEY_UNITS) as Units | null;
       if (u === "F" || u === "C") setUnits(u);
+      const cc = localStorage.getItem(LS_KEY_CURRENT_COORDS);
+      if (cc) {
+        const parsed = JSON.parse(cc);
+        if (typeof parsed?.lat === "number" && typeof parsed?.lon === "number") {
+          setCurrentLocationCoords(parsed);
+        }
+      }
+      const cl = localStorage.getItem(LS_KEY_CURRENT_LABEL);
+      if (cl) setCurrentLocationLabel(cl);
     } catch { /* ignore */ }
   }, []);
 
-  // Ask for geolocation once on first mount.
-  useEffect(() => {
-    if (!("geolocation" in navigator)) return;
+  // Request the device's live location. Resolves permission state.
+  const requestCurrentLocation = useCallback(() => {
+    if (!("geolocation" in navigator)) {
+      setLocationPermission("unsupported");
+      return;
+    }
     navigator.geolocation.getCurrentPosition(
-      (pos) => setCurrentLocationCoords({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => setCurrentLocationCoords(null),
-      { timeout: 8000 },
+      async (pos) => {
+        const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setCurrentLocationCoords(coords);
+        setLocationPermission("granted");
+        try { localStorage.setItem(LS_KEY_CURRENT_COORDS, JSON.stringify(coords)); } catch {}
+        const label = await reverseGeocode(coords.lat, coords.lon);
+        if (label) {
+          setCurrentLocationLabel(label);
+          try { localStorage.setItem(LS_KEY_CURRENT_LABEL, label); } catch {}
+        }
+      },
+      () => {
+        setLocationPermission("denied");
+      },
+      { timeout: 10000, enableHighAccuracy: false, maximumAge: 5 * 60 * 1000 },
     );
   }, []);
+
+  // Auto-request on first mount.
+  useEffect(() => {
+    requestCurrentLocation();
+  }, [requestCurrentLocation]);
 
   // Persist when things change.
   useEffect(() => {
@@ -82,7 +122,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Build the full location list, including the dynamic "Current Location".
   const locations = useMemo<LocationOption[]>(() => {
     const current: LocationOption | null = currentLocationCoords
-      ? { id: "current", label: "Current Location", lat: currentLocationCoords.lat, lon: currentLocationCoords.lon, current: true }
+      ? {
+          id: "current",
+          label: currentLocationLabel
+            ? `📍 Current · ${currentLocationLabel}`
+            : "📍 Current Location",
+          lat: currentLocationCoords.lat,
+          lon: currentLocationCoords.lon,
+          current: true,
+        }
       : null;
     const list = [
       ...(current ? [current] : []),
@@ -90,7 +138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...customLocations,
     ];
     return list;
-  }, [currentLocationCoords, customLocations]);
+  }, [currentLocationCoords, currentLocationLabel, customLocations]);
 
   // Resolve selected, falling back to Philadelphia if missing.
   const selected = useMemo<LocationOption>(() => {
@@ -134,6 +182,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     units, toggleUnits,
     forecast, loading, error, refresh,
     currentLocationCoords, setCurrentLocationCoords,
+    currentLocationLabel,
+    locationPermission,
+    requestCurrentLocation,
   };
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

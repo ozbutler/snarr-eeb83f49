@@ -88,7 +88,7 @@ function NextDaysCollapsible() {
     })
     .join(" · ");
   return (
-    <CollapsibleCard id="home:next3" title="Next 3 Days" icon="📅" summary={summary} defaultOpen>
+    <CollapsibleCard id="home:next3" title="Next 3 Days" icon="📅" summary={summary}>
       <div className="grid grid-cols-3 gap-2">
         {days.map((d) => {
           const desc = describeCode(d.weatherCode);
