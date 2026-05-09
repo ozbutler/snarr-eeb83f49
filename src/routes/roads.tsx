@@ -65,7 +65,7 @@ function Content() {
         id="roads:impact"
         title="Weather impact on roads"
         icon={brief.roadEmoji}
-        defaultOpen
+
         summary={brief.weatherImpact}
       >
         <p className="text-sm text-muted-foreground">{brief.weatherImpact}</p>
@@ -75,7 +75,7 @@ function Content() {
         id="roads:recommendation"
         title="Driving recommendation"
         icon="🧭"
-        defaultOpen
+
         summary={brief.recommendation}
       >
         <p className="text-sm text-foreground">{brief.recommendation}</p>
@@ -87,7 +87,7 @@ function Content() {
           title="Road alerts"
           icon="⚠️"
           tone="alert"
-          defaultOpen
+
           summary={`${brief.alerts.length} alert${brief.alerts.length === 1 ? "" : "s"}`}
         >
           <ul className="space-y-1 text-sm">
