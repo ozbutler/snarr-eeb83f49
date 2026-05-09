@@ -46,6 +46,15 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-sunny: var(--sunny);
+  --color-rainy: var(--rainy);
+  --color-cloudy: var(--cloudy);
+  --color-stormy: var(--stormy);
+  --color-snow: var(--snow);
+  --color-hot: var(--hot);
+  --color-confidence-high: var(--confidence-high);
+  --color-confidence-mid: var(--confidence-mid);
+  --color-confidence-low: var(--confidence-low);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
