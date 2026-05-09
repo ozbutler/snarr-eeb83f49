@@ -14,19 +14,19 @@ export function Header() {
   const { pathname } = useLocation();
 
   return (
-    <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/70 border-b border-border">
-      <div className="mx-auto max-w-md px-4 pt-5 pb-3">
-        <div className="flex items-start justify-between gap-3">
+    <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/75 border-b border-border/70" style={{ paddingTop: "env(safe-area-inset-top)" }}>
+      <div className="mx-auto max-w-md px-4 pt-3 pb-2.5">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight text-foreground">
-              Daily Weather Brief
+            <h1 className="text-[17px] font-semibold tracking-tight text-foreground leading-tight">
+              Weather Brief
             </h1>
-            <p className="text-xs text-muted-foreground">Your quick morning weather check</p>
+            <p className="text-[11px] text-muted-foreground/80 leading-tight">Your morning briefing</p>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={toggleUnits}
-              className="h-9 px-3 rounded-full text-xs font-medium bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
+              className="h-8 px-2.5 rounded-full text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
               aria-label="Toggle units"
             >
               °{units}
@@ -34,7 +34,7 @@ export function Header() {
             <button
               onClick={refresh}
               disabled={loading}
-              className="h-9 w-9 rounded-full bg-secondary text-secondary-foreground hover:bg-accent transition-colors flex items-center justify-center disabled:opacity-60"
+              className="h-8 w-8 rounded-full bg-secondary text-secondary-foreground hover:bg-accent transition-colors flex items-center justify-center disabled:opacity-60 text-xs"
               aria-label="Refresh"
             >
               <span className={loading ? "animate-spin inline-block" : "inline-block"}>🔄</span>
@@ -42,11 +42,11 @@ export function Header() {
           </div>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-2.5">
           <LocationSelector />
         </div>
 
-        <nav className="mt-3 grid grid-cols-4 gap-1 p-1 bg-secondary rounded-2xl">
+        <nav className="mt-2.5 grid grid-cols-4 gap-1 p-0.5 bg-secondary/70 rounded-xl">
           {TABS.map((t) => {
             const active = pathname === t.to;
             return (
@@ -54,10 +54,10 @@ export function Header() {
                 key={t.to}
                 to={t.to}
                 className={
-                  "text-center text-sm font-medium py-2 rounded-xl transition-all " +
+                  "text-center text-[13px] font-medium py-1.5 rounded-lg transition-all " +
                   (active
-                    ? "bg-card text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground")
+                    ? "bg-card text-foreground shadow-[var(--shadow-card)]"
+                    : "text-muted-foreground/80 hover:text-foreground")
                 }
               >
                 {t.label}
