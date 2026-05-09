@@ -1,0 +1,9 @@
+{
+  "name": "Weather Brief",
+  "short_name": "Weather Brief",
+  "description": "Your quick morning weather check — verified across multiple sources.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eaf2fa",
+  "theme_color": "#cfe3f5"
+}
