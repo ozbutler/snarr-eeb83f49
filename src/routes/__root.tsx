@@ -9,6 +9,8 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
+import { AppProvider } from "@/lib/weather/AppContext";
+import { Header } from "@/components/wb/Header";
 
 function NotFoundComponent() {
   return (
@@ -71,12 +73,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      { title: "Weather Brief — Your daily morning weather check" },
+      { name: "description", content: "A premium personal morning assistant: compact daily weather, 7-day outlook, and road conditions, verified across multiple sources." },
+      { name: "theme-color", content: "#cfe3f5" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "default" },
+      { name: "apple-mobile-web-app-title", content: "Weather Brief" },
+      { property: "og:title", content: "Weather Brief" },
+      { property: "og:description", content: "Compact daily weather, 7-day outlook, and road briefing — verified across sources." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
@@ -86,6 +91,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
@@ -113,7 +119,12 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <AppProvider>
+        <div className="min-h-screen bg-background">
+          <Header />
+          <Outlet />
+        </div>
+      </AppProvider>
     </QueryClientProvider>
   );
 }

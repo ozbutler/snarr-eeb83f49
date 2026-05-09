@@ -46,6 +46,15 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-sunny: var(--sunny);
+  --color-rainy: var(--rainy);
+  --color-cloudy: var(--cloudy);
+  --color-stormy: var(--stormy);
+  --color-snow: var(--snow);
+  --color-hot: var(--hot);
+  --color-confidence-high: var(--confidence-high);
+  --color-confidence-mid: var(--confidence-mid);
+  --color-confidence-low: var(--confidence-low);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -62,26 +71,46 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
+  --radius: 1rem;
+  /* Soft sky-blue/slate weather palette */
+  --background: oklch(0.985 0.01 240);
+  --foreground: oklch(0.25 0.04 250);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
+  --card-foreground: oklch(0.25 0.04 250);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
+  --popover-foreground: oklch(0.25 0.04 250);
+  --primary: oklch(0.55 0.14 240);
+  --primary-foreground: oklch(0.99 0.005 240);
+  --secondary: oklch(0.95 0.02 240);
+  --secondary-foreground: oklch(0.3 0.05 250);
+  --muted: oklch(0.96 0.012 240);
+  --muted-foreground: oklch(0.5 0.03 250);
+  --accent: oklch(0.92 0.04 230);
+  --accent-foreground: oklch(0.25 0.06 250);
+  --destructive: oklch(0.6 0.22 27);
+  --destructive-foreground: oklch(0.99 0.005 240);
+  --border: oklch(0.92 0.015 240);
+  --input: oklch(0.93 0.015 240);
+  --ring: oklch(0.7 0.08 240);
+
+  /* Weather accents */
+  --sunny: oklch(0.92 0.1 95);
+  --rainy: oklch(0.78 0.08 235);
+  --cloudy: oklch(0.88 0.015 240);
+  --stormy: oklch(0.55 0.12 285);
+  --snow: oklch(0.94 0.03 220);
+  --hot: oklch(0.78 0.14 50);
+  --confidence-high: oklch(0.72 0.16 150);
+  --confidence-mid: oklch(0.82 0.14 80);
+  --confidence-low: oklch(0.68 0.18 30);
+
+  /* Gradients */
+  --gradient-sky: linear-gradient(160deg, oklch(0.92 0.05 240), oklch(0.97 0.02 220));
+  --gradient-dawn: linear-gradient(160deg, oklch(0.88 0.07 50), oklch(0.93 0.05 290));
+  --gradient-night: linear-gradient(160deg, oklch(0.35 0.08 270), oklch(0.5 0.1 240));
+  --gradient-card: linear-gradient(180deg, oklch(1 0 0), oklch(0.97 0.012 240));
+  --shadow-soft: 0 8px 24px -12px oklch(0.4 0.1 250 / 0.18);
+  --shadow-card: 0 4px 16px -8px oklch(0.4 0.08 250 / 0.12);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
