@@ -30,10 +30,10 @@ function Content() {
   return (
     <>
       <section className="rounded-3xl p-5 shadow-[var(--shadow-soft)]" style={{ background: "var(--gradient-sky)" }}>
-        <p className="text-xs uppercase tracking-wide text-muted-foreground">{selected.label}</p>
-        <h2 className="text-xl font-semibold mt-0.5">7-day outlook</h2>
-        <div className="mt-3 flex items-center justify-between">
-          <ConfidenceBadge level={forecast.confidence} />
+        <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{selected.label}</p>
+        <h2 className="text-lg font-semibold mt-0.5">7-day outlook</h2>
+        <div className="mt-2.5 flex items-center justify-between">
+          <ConfidenceBadge level={forecast.confidence} compact />
           <VerifiedBadge sources={forecast.sources} />
         </div>
       </section>
