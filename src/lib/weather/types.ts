@@ -22,10 +22,7 @@ export interface DailyForecast {
 
 export interface HourlyPoint {
   time: string;         // ISO
-  temp: number;         // °F
-  feelsLike: number;    // °F
   rainChance: number;   // 0-100
-  weatherCode: number;  // WMO
 }
 
 export interface CurrentWeather {
