@@ -50,9 +50,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [units, setUnits] = useState<Units>("F");
   const [currentLocationCoords, setCurrentLocationCoords] = useState<{ lat: number; lon: number } | null>(null);
   const [currentLocationLabel, setCurrentLocationLabel] = useState<string | null>(null);
-  const [locationPermission, setLocationPermission] = useState<LocationPermission>(
-    typeof navigator !== "undefined" && "geolocation" in navigator ? "prompt" : "unsupported"
-  );
+  // Initialize to "prompt" so SSR and the first client render match. The
+  // mount effect below resolves the real capability after hydration.
+  const [locationPermission, setLocationPermission] = useState<LocationPermission>("prompt");
   const [forecast, setForecast] = useState<ForecastBundle | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

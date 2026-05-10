@@ -4,6 +4,7 @@ import { PageShell } from "@/components/wb/PageShell";
 import { describeCode, fmtTemp, outfitFor, rainWindow } from "@/lib/weather/weatherUtils";
 import { ConfidenceBadge, VerifiedBadge } from "@/components/wb/Confidence";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
+import { HourlyForecast } from "@/components/wb/HourlyForecast";
 
 export const Route = createFileRoute("/today")({
   head: () => ({
@@ -81,6 +82,15 @@ function TodayContent() {
         <p className="text-sm text-muted-foreground">
           {window ? `Rain most likely between ${window}.` : "No notable rain expected in the next 24 hours."}
         </p>
+      </CollapsibleCard>
+
+      <CollapsibleCard
+        id="today:hourly"
+        title="Next 12 Hours"
+        icon="⏱️"
+        summary="Hour-by-hour temp & rain"
+      >
+        <HourlyForecast />
       </CollapsibleCard>
 
       <CollapsibleCard
