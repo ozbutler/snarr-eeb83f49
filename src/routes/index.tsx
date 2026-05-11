@@ -4,7 +4,7 @@ import { MorningSummaryCard } from "@/components/wb/MorningSummaryCard";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { NewsBriefCard } from "@/components/wb/NewsBriefCard";
 import { useApp } from "@/lib/weather/AppContext";
-import { describeCode, fmtTemp } from "@/lib/weather/weatherUtils";
+import { describeCode, fmtTemp, parseForecastDateLocal } from "@/lib/weather/weatherUtils";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
 
 export const Route = createFileRoute("/")({
@@ -35,7 +35,7 @@ function NextDaysCard() {
       <div className="mt-2 grid grid-cols-3 gap-1.5">
         {days.map((d) => {
           const desc = describeCode(d.weatherCode);
-          const day = new Date(d.date).toLocaleDateString(undefined, { weekday: "short" });
+          const day = parseForecastDateLocal(d.date).toLocaleDateString(undefined, { weekday: "short" });
           return (
             <div key={d.date} className="rounded-xl bg-secondary/50 px-2 py-2 text-center">
               <div className="text-[10px] font-medium text-muted-foreground">{day}</div>
