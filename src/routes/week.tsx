@@ -48,12 +48,18 @@ function Content() {
   );
 }
 
-// Local YYYY-MM-DD (avoids UTC shift from toISOString()).
+// Local YYYY-MM-DD (avoids UTC shifts from toISOString()).
 function localISODate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function forecastDateToLocalKey(value: string): string {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dateOnly) return value;
+  return localISODate(new Date(value));
 }
 
 // Build exactly 7 cards starting at today's local date. Match forecast
@@ -63,8 +69,7 @@ function localISODate(d: Date): string {
 function buildSevenDayList(daily: DailyForecast[]): DailyForecast[] {
   const byDate = new Map<string, DailyForecast>();
   for (const d of daily) {
-    // d.date is "YYYY-MM-DD" from Open-Meteo (timezone=auto), already local.
-    byDate.set(d.date, d);
+    byDate.set(forecastDateToLocalKey(d.date), d);
   }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
