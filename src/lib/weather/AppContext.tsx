@@ -176,10 +176,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const setSelected = useCallback((id: string) => setSelectedId(id), []);
 
   const addLocation = useCallback((loc: Omit<LocationOption, "id" | "custom">) => {
+    // Dedupe across defaults + customs by approximate coords or label.
+    const all = [...DEFAULT_LOCATIONS, ...customLocations];
+    const match = all.find(
+      (l) =>
+        l.label.toLowerCase() === loc.label.toLowerCase() ||
+        (Math.abs(l.lat - loc.lat) < 0.05 && Math.abs(l.lon - loc.lon) < 0.05),
+    );
+    if (match) {
+      setSelectedId(match.id);
+      return;
+    }
     const id = `custom-${Date.now()}`;
     setCustomLocations((prev) => [...prev, { ...loc, id, custom: true }]);
     setSelectedId(id);
-  }, []);
+  }, [customLocations]);
 
   const removeLocation = useCallback((id: string) => {
     setCustomLocations((prev) => prev.filter((l) => l.id !== id));
