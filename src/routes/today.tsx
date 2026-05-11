@@ -4,6 +4,7 @@ import { PageShell } from "@/components/wb/PageShell";
 import { describeCode, fmtTemp, outfitFor, rainWindow } from "@/lib/weather/weatherUtils";
 import { ConfidenceBadge, VerifiedBadge } from "@/components/wb/Confidence";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
+import { HourlyForecast } from "@/components/wb/HourlyForecast";
 
 export const Route = createFileRoute("/today")({
   head: () => ({
@@ -70,6 +71,8 @@ function TodayContent() {
           <VerifiedBadge sources={sources} />
         </div>
       </section>
+
+      <HourlyForecast />
 
       <CollapsibleCard
         id="today:rain"
