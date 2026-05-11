@@ -3,6 +3,7 @@ import { PageShell } from "@/components/wb/PageShell";
 import { useApp } from "@/lib/weather/AppContext";
 import { WeatherCard } from "@/components/wb/WeatherCard";
 import { ConfidenceBadge, VerifiedBadge } from "@/components/wb/Confidence";
+import type { DailyForecast } from "@/lib/weather/types";
 
 export const Route = createFileRoute("/week")({
   head: () => ({
@@ -27,6 +28,7 @@ function WeekPage() {
 function Content() {
   const { forecast, selected } = useApp();
   if (!forecast) return null;
+  const week = buildSevenDayList(forecast.daily);
   return (
     <>
       <section className="rounded-3xl p-5 shadow-[var(--shadow-soft)]" style={{ background: "var(--gradient-sky)" }}>
@@ -38,10 +40,46 @@ function Content() {
         </div>
       </section>
       <div className="space-y-2">
-        {forecast.daily.map((d, i) => (
+        {week.map((d, i) => (
           <WeatherCard key={d.date} day={d} isToday={i === 0} />
         ))}
       </div>
     </>
   );
+}
+
+// Local YYYY-MM-DD (avoids UTC shift from toISOString()).
+function localISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Build exactly 7 cards starting at today's local date. Match forecast
+// entries by local YYYY-MM-DD; fill any missing day with a neutral
+// placeholder derived from the nearest available day so the order stays
+// stable across refresh, location changes, and unit toggles.
+function buildSevenDayList(daily: DailyForecast[]): DailyForecast[] {
+  const byDate = new Map<string, DailyForecast>();
+  for (const d of daily) {
+    // d.date is "YYYY-MM-DD" from Open-Meteo (timezone=auto), already local.
+    byDate.set(d.date, d);
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const out: DailyForecast[] = [];
+  const fallback = daily[0];
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(today);
+    dt.setDate(today.getDate() + i);
+    const key = localISODate(dt);
+    const match = byDate.get(key);
+    if (match) {
+      out.push(match);
+    } else if (fallback) {
+      out.push({ ...fallback, date: key });
+    }
+  }
+  return out;
 }
