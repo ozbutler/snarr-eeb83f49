@@ -1,13 +1,13 @@
 import { useApp } from "@/lib/weather/AppContext";
 import type { DailyForecast } from "@/lib/weather/types";
-import { describeCode, fmtTemp } from "@/lib/weather/weatherUtils";
+import { describeCode, fmtTemp, parseForecastDateLocal } from "@/lib/weather/weatherUtils";
 import { outfitChips } from "@/lib/weather/trafficUtils";
 
 export function WeatherCard({ day, isToday }: { day: DailyForecast; isToday?: boolean }) {
   const { units } = useApp();
   const desc = describeCode(day.weatherCode);
   const chips = outfitChips(day.high, day.rainChance);
-  const displayDate = parseLocalForecastDate(day.date);
+  const displayDate = parseForecastDateLocal(day.date);
   const dayName = isToday
     ? "Today"
     : displayDate.toLocaleDateString(undefined, { weekday: "long" });
@@ -45,12 +45,4 @@ export function WeatherCard({ day, isToday }: { day: DailyForecast; isToday?: bo
       </div>
     </article>
   );
-}
-
-function parseLocalForecastDate(value: string): Date {
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (dateOnly) {
-    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
-  }
-  return new Date(value);
 }
