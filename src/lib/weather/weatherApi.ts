@@ -16,7 +16,7 @@ async function fetchOpenMeteo(lat: number, lon: number) {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,apparent_temperature,weather_code,is_day` +
-    `&hourly=precipitation_probability` +
+    `&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_probability_max` +
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7`;
   const res = await fetch(url);
@@ -42,7 +42,13 @@ async function fetchOpenMeteo(lat: number, lon: number) {
   // Trim hourly to next 24h from "now".
   const now = Date.now();
   const hourly: HourlyPoint[] = (j.hourly.time as string[])
-    .map((t, i) => ({ time: t, rainChance: j.hourly.precipitation_probability[i] ?? 0 }))
+    .map((t, i) => ({
+      time: t,
+      rainChance: j.hourly.precipitation_probability?.[i] ?? 0,
+      temp: j.hourly.temperature_2m?.[i],
+      feelsLike: j.hourly.apparent_temperature?.[i],
+      weatherCode: j.hourly.weather_code?.[i],
+    }))
     .filter((h) => {
       const t = new Date(h.time).getTime();
       return t >= now - 30 * 60 * 1000 && t <= now + 24 * 3600 * 1000;
@@ -171,15 +177,39 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
 
 // ---- Geocoding (Open-Meteo) -----------------------------------------------
 
-export async function geocode(query: string): Promise<{ name: string; lat: number; lon: number } | null> {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=1&language=en&format=json`;
+export interface GeocodeResult {
+  name: string;        // formatted "City, Region"
+  city: string;
+  region?: string;     // state / admin1
+  country?: string;
+  lat: number;
+  lon: number;
+}
+
+export async function geocode(query: string): Promise<GeocodeResult | null> {
+  const list = await searchLocations(query, 1);
+  return list[0] ?? null;
+}
+
+export async function searchLocations(query: string, count = 6): Promise<GeocodeResult[]> {
+  if (!query.trim()) return [];
+  const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=${count}&language=en&format=json`;
   const res = await fetch(url);
-  if (!res.ok) return null;
+  if (!res.ok) return [];
   const j = await res.json();
-  const r = j?.results?.[0];
-  if (!r) return null;
-  const region = r.admin1 ? `, ${r.admin1}` : r.country ? `, ${r.country}` : "";
-  return { name: `${r.name}${region}`, lat: r.latitude, lon: r.longitude };
+  const results: any[] = j?.results ?? [];
+  return results.map((r) => {
+    const region = r.admin1 ?? undefined;
+    const name = region ? `${r.name}, ${region}` : r.country ? `${r.name}, ${r.country}` : r.name;
+    return {
+      name,
+      city: r.name,
+      region,
+      country: r.country,
+      lat: r.latitude,
+      lon: r.longitude,
+    };
+  });
 }
 
 // ---- Reverse geocoding (BigDataCloud, no key) -----------------------------
