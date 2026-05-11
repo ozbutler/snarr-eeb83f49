@@ -2,6 +2,28 @@
 
 import type { Units } from "./types";
 
+// Parse forecast dates in the device's local timezone. Date-only strings
+// (YYYY-MM-DD) must not go through new Date(value), because browsers treat
+// them as UTC midnight and can shift them to the previous local day.
+export function parseForecastDateLocal(value: string): Date {
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (dateOnly) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  }
+  return new Date(value);
+}
+
+export function localDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+export function forecastDateLocalKey(value: string): string {
+  return localDateKey(parseForecastDateLocal(value));
+}
+
 // WMO weather code -> friendly emoji + short label.
 export function describeCode(code: number, isDay = true): { emoji: string; label: string; tone: string } {
   // tone is a CSS variable name on --color-* tokens
