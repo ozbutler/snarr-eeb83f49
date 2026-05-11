@@ -4,6 +4,7 @@ import { useApp } from "@/lib/weather/AppContext";
 import { WeatherCard } from "@/components/wb/WeatherCard";
 import { ConfidenceBadge, VerifiedBadge } from "@/components/wb/Confidence";
 import type { DailyForecast } from "@/lib/weather/types";
+import { forecastDateLocalKey, localDateKey } from "@/lib/weather/weatherUtils";
 
 export const Route = createFileRoute("/week")({
   head: () => ({
@@ -48,14 +49,6 @@ function Content() {
   );
 }
 
-// Local YYYY-MM-DD (avoids UTC shift from toISOString()).
-function localISODate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
 // Build exactly 7 cards starting at today's local date. Match forecast
 // entries by local YYYY-MM-DD; fill any missing day with a neutral
 // placeholder derived from the nearest available day so the order stays
@@ -63,8 +56,7 @@ function localISODate(d: Date): string {
 function buildSevenDayList(daily: DailyForecast[]): DailyForecast[] {
   const byDate = new Map<string, DailyForecast>();
   for (const d of daily) {
-    // d.date is "YYYY-MM-DD" from Open-Meteo (timezone=auto), already local.
-    byDate.set(d.date, d);
+    byDate.set(forecastDateLocalKey(d.date), d);
   }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -73,7 +65,7 @@ function buildSevenDayList(daily: DailyForecast[]): DailyForecast[] {
   for (let i = 0; i < 7; i++) {
     const dt = new Date(today);
     dt.setDate(today.getDate() + i);
-    const key = localISODate(dt);
+    const key = localDateKey(dt);
     const match = byDate.get(key);
     if (match) {
       out.push(match);

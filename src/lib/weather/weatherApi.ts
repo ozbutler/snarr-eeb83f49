@@ -13,12 +13,13 @@ import type {
 // ---- Open-Meteo (primary) -------------------------------------------------
 
 async function fetchOpenMeteo(lat: number, lon: number) {
+  const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "auto";
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&current=temperature_2m,apparent_temperature,weather_code,is_day` +
     `&hourly=temperature_2m,apparent_temperature,precipitation_probability,weather_code` +
     `&daily=weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,precipitation_probability_max` +
-    `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=auto&forecast_days=7`;
+    `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch&timezone=${encodeURIComponent(deviceTimeZone)}&forecast_days=7`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Open-Meteo failed");
   const j = await res.json();

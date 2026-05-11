@@ -1,16 +1,21 @@
 import { useApp } from "@/lib/weather/AppContext";
 import type { DailyForecast } from "@/lib/weather/types";
-import { describeCode, fmtTemp } from "@/lib/weather/weatherUtils";
+import { describeCode, fmtTemp, parseForecastDateLocal } from "@/lib/weather/weatherUtils";
 import { outfitChips } from "@/lib/weather/trafficUtils";
 
 export function WeatherCard({ day, isToday }: { day: DailyForecast; isToday?: boolean }) {
   const { units } = useApp();
   const desc = describeCode(day.weatherCode);
   const chips = outfitChips(day.high, day.rainChance);
+  const displayDate = parseForecastDateLocal(day.date);
   const dayName = isToday
     ? "Today"
-    : new Date(day.date).toLocaleDateString(undefined, { weekday: "long" });
-  const dateStr = new Date(day.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    : displayDate.toLocaleDateString(undefined, { weekday: "long" });
+  const dateStr = displayDate.toLocaleDateString(undefined, {
+    ...(isToday ? { weekday: "long" as const } : {}),
+    month: "short",
+    day: "numeric",
+  });
 
   return (
     <article className="rounded-2xl bg-card p-3.5 shadow-[var(--shadow-card)] flex items-center gap-3 min-h-[88px]">
