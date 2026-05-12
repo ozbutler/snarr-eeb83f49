@@ -59,7 +59,7 @@ export function ConfidenceBadge({ level, sources, compact = false }: { level: Co
           <span>{m.emoji}</span>
           <span>{m.short} confidence</span>
         </div>
-        <p className="text-muted-foreground leading-relaxed">{m.explain}</p>
+        <p className="text-muted-foreground leading-relaxed">{explanation}</p>
         {!singleSource && sources && (
           <p className="text-muted-foreground leading-relaxed">
             Compared sources: {sources.join(" and ")}.
