@@ -5,6 +5,7 @@ import { describeCode, fmtTemp, outfitFor, rainWindow } from "@/lib/weather/weat
 import { ConfidenceBadge, VerifiedBadge } from "@/components/wb/Confidence";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { HourlyForecast } from "@/components/wb/HourlyForecast";
+import { OutdoorConditionsDetailed } from "@/components/wb/OutdoorConditions";
 
 export const Route = createFileRoute("/today")({
   head: () => ({
@@ -73,6 +74,8 @@ function TodayContent() {
       </section>
 
       <HourlyForecast />
+
+      <OutdoorConditionsDetailed />
 
       <CollapsibleCard
         id="today:rain"
