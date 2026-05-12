@@ -147,10 +147,14 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
   const sources = ["Open-Meteo"];
   if (nws) sources.push("Weather.gov");
 
-  const confidence = scoreConfidence(
-    { high: today.high, low: today.low, rain: today.rainChance },
-    nws,
-  );
+  // Single source of truth: with only one provider responding, force moderate.
+  const confidence: Confidence =
+    sources.length < 2
+      ? "moderate"
+      : scoreConfidence(
+          { high: today.high, low: today.low, rain: today.rainChance },
+          nws,
+        );
 
   // Blend high/low slightly toward NWS when available (averaged forecast).
   const blendedDaily = om.daily.map((d, i) => {
