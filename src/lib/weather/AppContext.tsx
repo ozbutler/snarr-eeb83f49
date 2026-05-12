@@ -106,23 +106,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  // Auto-request on first mount only if not previously denied.
-  // - "granted": browser remembers, resolves silently.
-  // - unknown: trigger one initial prompt.
-  // - "denied": skip entirely (use saved selection / fallback city).
+  // Hydrate previously stored permission state — never auto-prompt on mount.
+  // The user must explicitly tap "Current Location" to trigger a request.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       setLocationPermission("unsupported");
       return;
     }
-    let stored: string | null = null;
-    try { stored = localStorage.getItem(LS_KEY_PERM); } catch {}
-    if (stored === "denied") {
-      setLocationPermission("denied");
-      return;
-    }
-    requestCurrentLocation();
-  }, [requestCurrentLocation]);
+    try {
+      const stored = localStorage.getItem(LS_KEY_PERM);
+      if (stored === "granted") setLocationPermission("granted");
+      else if (stored === "denied") setLocationPermission("denied");
+    } catch { /* ignore */ }
+  }, []);
 
   // Persist when things change.
   useEffect(() => {
