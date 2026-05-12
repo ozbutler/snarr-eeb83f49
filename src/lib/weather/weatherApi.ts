@@ -145,7 +145,7 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
 
   const today = om.daily[0];
   const sources = ["Open-Meteo"];
-  if (nws) sources.push("NWS");
+  if (nws) sources.push("Weather.gov");
 
   const confidence = scoreConfidence(
     { high: today.high, low: today.low, rain: today.rainChance },
