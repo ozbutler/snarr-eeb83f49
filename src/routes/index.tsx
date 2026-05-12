@@ -3,6 +3,7 @@ import { PageShell } from "@/components/wb/PageShell";
 import { MorningSummaryCard } from "@/components/wb/MorningSummaryCard";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { NewsBriefCard } from "@/components/wb/NewsBriefCard";
+import { OutdoorConditionsCard } from "@/components/wb/OutdoorConditions";
 import { useApp } from "@/lib/weather/AppContext";
 import { describeCode, fmtTemp, parseForecastDateLocal } from "@/lib/weather/weatherUtils";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
@@ -16,6 +17,7 @@ function Index() {
     <PageShell>
       <MorningSummaryCard />
       <NextDaysCard />
+      <OutdoorConditionsCard />
       <RoadsCollapsible />
       <NewsBriefCard />
     </PageShell>
