@@ -157,7 +157,7 @@ export function LocationSelector() {
                       {current
                         ? current.label.replace(/^📍\s*Current\s*·\s*/, "")
                         : locationPermission === "denied"
-                        ? "Access denied — enable in browser settings"
+                        ? "Location access denied. Tap to retry."
                         : locationPermission === "unsupported"
                         ? "Not supported on this device"
                         : "Tap to detect"}
