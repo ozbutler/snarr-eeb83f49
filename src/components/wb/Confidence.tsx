@@ -32,6 +32,12 @@ export function ConfidenceBadge({ level, sources, compact = false }: { level: Co
   const m = MAP[level];
   const text = compact ? `Confidence · ${m.short}` : m.label;
   const singleSource = !sources || sources.length <= 1;
+  // When only one source responded, confidence is forced to moderate upstream,
+  // so we tailor the moderate explanation to that case for consistency.
+  const explanation =
+    level === "moderate" && singleSource
+      ? `Only one source was available${sources && sources[0] ? ` (${sources[0]})` : ""}, so confidence defaults to moderate.`
+      : m.explain;
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -53,14 +59,10 @@ export function ConfidenceBadge({ level, sources, compact = false }: { level: Co
           <span>{m.emoji}</span>
           <span>{m.short} confidence</span>
         </div>
-        <p className="text-muted-foreground leading-relaxed">{m.explain}</p>
-        {singleSource ? (
+        <p className="text-muted-foreground leading-relaxed">{explanation}</p>
+        {!singleSource && sources && (
           <p className="text-muted-foreground leading-relaxed">
-            Only one source was available{sources && sources[0] ? ` (${sources[0]})` : ""}, so confidence defaults to moderate.
-          </p>
-        ) : (
-          <p className="text-muted-foreground leading-relaxed">
-            Compared sources: {sources!.join(" and ")}.
+            Compared sources: {sources.join(" and ")}.
           </p>
         )}
         <p className="text-muted-foreground leading-relaxed pt-1 border-t border-border/50">
