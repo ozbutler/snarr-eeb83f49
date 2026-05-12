@@ -67,7 +67,7 @@ function TodayContent() {
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2">
-          <ConfidenceBadge level={confidence} compact />
+          <ConfidenceBadge level={confidence} sources={sources} compact />
           <VerifiedBadge sources={sources} />
         </div>
       </section>
@@ -123,11 +123,13 @@ function TodayContent() {
         summary={`${confidence[0].toUpperCase()}${confidence.slice(1)} · ${sources.length} source${sources.length === 1 ? "" : "s"}`}
       >
         <div className="flex items-center gap-2">
-          <ConfidenceBadge level={confidence} compact />
+          <ConfidenceBadge level={confidence} sources={sources} compact />
           <VerifiedBadge sources={sources} />
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Forecasts are compared across {sources.join(" and ")} to estimate agreement.
+          {sources.length > 1
+            ? `Forecasts are compared across ${sources.join(" and ")} to estimate agreement.`
+            : `Only ${sources[0]} responded; confidence defaults to moderate.`}
         </p>
       </CollapsibleCard>
 

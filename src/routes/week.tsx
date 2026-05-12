@@ -36,7 +36,7 @@ function Content() {
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{selected.label}</p>
         <h2 className="text-lg font-semibold mt-0.5">7-day outlook</h2>
         <div className="mt-2.5 flex items-center justify-between">
-          <ConfidenceBadge level={forecast.confidence} compact />
+          <ConfidenceBadge level={forecast.confidence} sources={forecast.sources} compact />
           <VerifiedBadge sources={forecast.sources} />
         </div>
       </section>
