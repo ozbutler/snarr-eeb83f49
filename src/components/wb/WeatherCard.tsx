@@ -1,9 +1,7 @@
 import { useApp } from "@/lib/weather/AppContext";
-import type { DailyForecast, PeriodSummary } from "@/lib/weather/types";
-import { describeCode, fmtTemp, parseForecastDateLocal } from "@/lib/weather/weatherUtils";
-import { toUnit } from "@/lib/weather/weatherUtils";
+import type { DailyForecast, PeriodSummary, Units } from "@/lib/weather/types";
+import { describeCode, fmtTemp, parseForecastDateLocal, toUnit } from "@/lib/weather/weatherUtils";
 import { outfitChips } from "@/lib/weather/trafficUtils";
-import type { Units } from "@/lib/weather/types";
 
 export function WeatherCard({ day, isToday }: { day: DailyForecast; isToday?: boolean }) {
   const { units } = useApp();
