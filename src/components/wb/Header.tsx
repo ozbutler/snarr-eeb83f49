@@ -1,6 +1,9 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { LocationSelector } from "./LocationSelector";
 import { useApp } from "@/lib/weather/AppContext";
+import homeLogo from "@/assets/logos/snarr-home-logo.png";
+import weatherLogo from "@/assets/logos/snarr-weather-logo.png";
+import roadsLogo from "@/assets/logos/snarr-roads-logo.png";
 
 const TABS = [
   { to: "/", label: "Home" },
@@ -9,22 +12,42 @@ const TABS = [
   { to: "/roads", label: "Roads" },
 ] as const;
 
+const LOGO_MAP: Record<string, { src: string; alt: string }> = {
+  "/": { src: homeLogo, alt: "Snarr home logo" },
+  "/home": { src: homeLogo, alt: "Snarr home logo" },
+  "/today": { src: weatherLogo, alt: "Snarr weather logo" },
+  "/week": { src: weatherLogo, alt: "Snarr weather logo" },
+  "/roads": { src: roadsLogo, alt: "Snarr roads logo" },
+  "/news": { src: homeLogo, alt: "Snarr home logo" },
+};
+
 export function Header() {
   const { units, toggleUnits, refresh, loading, forecast } = useApp();
   const { pathname } = useLocation();
   const updatedLabel = forecast
     ? `Updated ${new Date(forecast.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`
     : loading ? "Updating…" : "Your morning briefing";
+  const logo = LOGO_MAP[pathname] ?? LOGO_MAP["/"];
 
   return (
     <header className="sticky top-0 z-20 backdrop-blur-xl bg-background/75 border-b border-border/70" style={{ paddingTop: "env(safe-area-inset-top)" }}>
       <div className="mx-auto max-w-md px-4 pt-3 pb-2.5">
         <div className="flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-[17px] font-semibold tracking-tight text-foreground leading-tight">
-              Weather Brief
-            </h1>
-            <p className="text-[11px] text-muted-foreground/80 leading-tight">{updatedLabel}</p>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src={logo.src}
+              alt={logo.alt}
+              width={42}
+              height={42}
+              className="h-[42px] w-[42px] rounded-full object-cover shadow-sm bg-white shrink-0"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+            />
+            <div className="min-w-0">
+              <h1 className="text-[17px] font-semibold tracking-tight text-foreground leading-tight">
+                Snarr
+              </h1>
+              <p className="text-[11px] text-muted-foreground/80 leading-tight truncate">{updatedLabel}</p>
+            </div>
           </div>
           <div className="flex items-center gap-1">
             <button
