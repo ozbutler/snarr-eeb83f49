@@ -18,6 +18,7 @@ export interface DailyForecast {
   feelsHigh: number;    // °F apparent max
   rainChance: number;   // 0-100
   weatherCode: number;  // WMO
+  periods?: DayPeriods;
 }
 
 export interface HourlyPoint {
@@ -26,6 +27,23 @@ export interface HourlyPoint {
   temp?: number;        // °F
   feelsLike?: number;   // °F
   weatherCode?: number; // WMO
+  uvIndex?: number;
+}
+
+export interface PeriodSummary {
+  tempMin?: number;
+  tempMax?: number;
+  feelsMin?: number;
+  feelsMax?: number;
+  rainPct?: number;
+  uvMin?: number;
+  uvMax?: number;
+}
+
+export interface DayPeriods {
+  morning: PeriodSummary;
+  afternoon: PeriodSummary;
+  evening: PeriodSummary;
 }
 
 export interface CurrentWeather {
