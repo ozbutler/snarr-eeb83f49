@@ -12,7 +12,7 @@ import type {
   PeriodSummary,
 } from "./types";
 import { fetchPirateWeather, type PirateNormalized } from "./pirate.functions";
-import { forecastDateLocalKey, localDateKey, parseForecastDateLocal } from "./weatherUtils";
+import { forecastDateLocalKey, localDateKey } from "./weatherUtils";
 
 // ---- Open-Meteo (primary) -------------------------------------------------
 
