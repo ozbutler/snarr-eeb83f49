@@ -300,7 +300,6 @@ function periodForHour(h: number): "morning" | "afternoon" | "evening" | null {
 
 function computePeriods(dateValue: string, hourly: HourlyPoint[]): DayPeriods {
   const targetKey = forecastDateLocalKey(dateValue);
-  const targetDate = parseForecastDateLocal(dateValue);
   const isToday = targetKey === localDateKey(new Date());
   const nowH = new Date().getHours();
 
@@ -326,8 +325,6 @@ function computePeriods(dateValue: string, hourly: HourlyPoint[]): DayPeriods {
     afternoon: summarize(buckets.afternoon),
     evening: summarize(buckets.evening),
   };
-  // Use targetDate to silence unused-var lint while preserving param semantics.
-  void targetDate;
 }
 
 function summarize(points: HourlyPoint[]): PeriodSummary {
