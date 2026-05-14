@@ -9,13 +9,13 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WeekRouteImport } from './routes/week'
+import { Route as WeatherRouteImport } from './routes/weather'
 import { Route as RoadsRouteImport } from './routes/roads'
 import { Route as IndexRouteImport } from './routes/index'
 
-const WeekRoute = WeekRouteImport.update({
-  id: '/week',
-  path: '/week',
+const WeatherRoute = WeatherRouteImport.update({
+  id: '/weather',
+  path: '/weather',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadsRoute = RoadsRouteImport.update({
@@ -32,40 +32,40 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/roads': typeof RoadsRoute
-  '/week': typeof WeekRoute
+  '/weather': typeof WeatherRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/roads': typeof RoadsRoute
-  '/week': typeof WeekRoute
+  '/weather': typeof WeatherRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/roads': typeof RoadsRoute
-  '/week': typeof WeekRoute
+  '/weather': typeof WeatherRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/roads' | '/week'
+  fullPaths: '/' | '/roads' | '/weather'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/roads' | '/week'
-  id: '__root__' | '/' | '/roads' | '/week'
+  to: '/' | '/roads' | '/weather'
+  id: '__root__' | '/' | '/roads' | '/weather'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   RoadsRoute: typeof RoadsRoute
-  WeekRoute: typeof WeekRoute
+  WeatherRoute: typeof WeatherRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/week': {
-      id: '/week'
-      path: '/week'
-      fullPath: '/week'
-      preLoaderRoute: typeof WeekRouteImport
+    '/weather': {
+      id: '/weather'
+      path: '/weather'
+      fullPath: '/weather'
+      preLoaderRoute: typeof WeatherRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roads': {
@@ -88,8 +88,18 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   RoadsRoute: RoadsRoute,
-  WeekRoute: WeekRoute,
+  WeatherRoute: WeatherRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
