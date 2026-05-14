@@ -87,7 +87,6 @@ export function OutdoorConditionsCard() {
           🌱 Pollen: {data.pollen.map((p) => `${p.label} ${p.value}`).join(" · ")}
         </div>
       )}
-      <p className="mt-2 text-xs text-foreground/80">{rec.emoji} {rec.text}.</p>
     </CollapsibleCard>
   );
 }
@@ -122,7 +121,7 @@ export function OutdoorConditionsDetailed() {
         <span className="text-xs text-muted-foreground">{rec.emoji} {rec.text}</span>
       </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-2.5 grid grid-cols-3 gap-2">
         <Stat
           emoji={aqi.emoji}
           label="U.S. AQI"
@@ -143,18 +142,14 @@ export function OutdoorConditionsDetailed() {
         />
       </div>
 
-      {data.pollen && data.pollen.length > 0 ? (
-        <div className="mt-3 rounded-xl bg-secondary/50 px-3 py-2">
+      {data.pollen && data.pollen.length > 0 && (
+        <div className="mt-2.5 rounded-xl bg-secondary/50 px-3 py-2">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">🌱 Pollen (avg today)</div>
           <div className="mt-1 text-sm">
             {data.pollen.map((p) => `${p.label} ${p.value} grains/m³`).join(" · ")}
           </div>
         </div>
-      ) : (
-        <p className="mt-3 text-[11px] text-muted-foreground">Pollen data not available for this region.</p>
       )}
-
-      <p className="mt-3 text-sm">{rec.emoji} {rec.text}.</p>
     </section>
   );
 }

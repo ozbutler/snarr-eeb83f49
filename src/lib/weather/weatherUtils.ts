@@ -80,13 +80,49 @@ export function morningBrief(highF: number, lowF: number, rainChance: number, co
   return `${tempFeel} today (${Math.round(highF)}°/${Math.round(lowF)}°) ${rain}. ${label}.${comfort}`.trim();
 }
 
-// Given hourly precip points, find the most likely rain window.
+// Given hourly precip points (in chronological order, local timezone), build
+// a useful summary of when rain is most likely. Returns null when nothing
+// notable is expected.
 export function rainWindow(hourly: { time: string; rainChance: number }[]): string | null {
-  const rainy = hourly.filter((h) => h.rainChance >= 40);
-  if (rainy.length === 0) return null;
-  const start = new Date(rainy[0].time);
-  const end = new Date(rainy[rainy.length - 1].time);
+  if (!hourly.length) return null;
   const fmt = (d: Date) =>
-    d.toLocaleTimeString([], { hour: "numeric" }).toLowerCase().replace(" ", "");
-  return `${fmt(start)}–${fmt(end)}`;
+    d.toLocaleTimeString([], { hour: "numeric" }).toLowerCase().replace(/\s+/g, "");
+
+  // Find the longest consecutive run of hours where chance >= 40%.
+  let bestStart = -1;
+  let bestEnd = -1;
+  let curStart = -1;
+  for (let i = 0; i < hourly.length; i++) {
+    const wet = hourly[i].rainChance >= 40;
+    if (wet) {
+      if (curStart === -1) curStart = i;
+      const len = i - curStart;
+      const bestLen = bestEnd - bestStart;
+      if (len >= bestLen) {
+        bestStart = curStart;
+        bestEnd = i;
+      }
+    } else {
+      curStart = -1;
+    }
+  }
+  if (bestStart === -1) return null;
+
+  const startDate = new Date(hourly[bestStart].time);
+  // Add 1 hour to the last rainy hour so a single-hour window reads as a range.
+  const lastDate = new Date(hourly[bestEnd].time);
+  const endDate = new Date(lastDate.getTime() + 60 * 60 * 1000);
+  if (startDate.getTime() === lastDate.getTime()) {
+    return `around ${fmt(startDate)}`;
+  }
+  return `${fmt(startDate)}–${fmt(endDate)}`;
+}
+
+// Friendly one-line summary describing the day's overall rain risk.
+export function rainOutlook(hourly: { rainChance: number }[]): string {
+  if (!hourly.length) return "Low chance of rain today";
+  const max = Math.max(...hourly.map((h) => h.rainChance ?? 0));
+  if (max < 30) return "Low chance of rain today";
+  if (max < 50) return "Slight chance of rain at times";
+  return "Rain likely at times today";
 }

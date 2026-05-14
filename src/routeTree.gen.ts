@@ -9,24 +9,24 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WeekRouteImport } from './routes/week'
-import { Route as TodayRouteImport } from './routes/today'
+import { Route as WeatherRouteImport } from './routes/weather'
 import { Route as RoadsRouteImport } from './routes/roads'
+import { Route as NewsRouteImport } from './routes/news'
 import { Route as IndexRouteImport } from './routes/index'
 
-const WeekRoute = WeekRouteImport.update({
-  id: '/week',
-  path: '/week',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TodayRoute = TodayRouteImport.update({
-  id: '/today',
-  path: '/today',
+const WeatherRoute = WeatherRouteImport.update({
+  id: '/weather',
+  path: '/weather',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadsRoute = RoadsRouteImport.update({
   id: '/roads',
   path: '/roads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsRoute = NewsRouteImport.update({
+  id: '/news',
+  path: '/news',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -37,52 +37,45 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/news': typeof NewsRoute
   '/roads': typeof RoadsRoute
-  '/today': typeof TodayRoute
-  '/week': typeof WeekRoute
+  '/weather': typeof WeatherRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/news': typeof NewsRoute
   '/roads': typeof RoadsRoute
-  '/today': typeof TodayRoute
-  '/week': typeof WeekRoute
+  '/weather': typeof WeatherRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/news': typeof NewsRoute
   '/roads': typeof RoadsRoute
-  '/today': typeof TodayRoute
-  '/week': typeof WeekRoute
+  '/weather': typeof WeatherRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/roads' | '/today' | '/week'
+  fullPaths: '/' | '/news' | '/roads' | '/weather'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/roads' | '/today' | '/week'
-  id: '__root__' | '/' | '/roads' | '/today' | '/week'
+  to: '/' | '/news' | '/roads' | '/weather'
+  id: '__root__' | '/' | '/news' | '/roads' | '/weather'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NewsRoute: typeof NewsRoute
   RoadsRoute: typeof RoadsRoute
-  TodayRoute: typeof TodayRoute
-  WeekRoute: typeof WeekRoute
+  WeatherRoute: typeof WeatherRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/week': {
-      id: '/week'
-      path: '/week'
-      fullPath: '/week'
-      preLoaderRoute: typeof WeekRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/today': {
-      id: '/today'
-      path: '/today'
-      fullPath: '/today'
-      preLoaderRoute: typeof TodayRouteImport
+    '/weather': {
+      id: '/weather'
+      path: '/weather'
+      fullPath: '/weather'
+      preLoaderRoute: typeof WeatherRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roads': {
@@ -90,6 +83,13 @@ declare module '@tanstack/react-router' {
       path: '/roads'
       fullPath: '/roads'
       preLoaderRoute: typeof RoadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/news': {
+      id: '/news'
+      path: '/news'
+      fullPath: '/news'
+      preLoaderRoute: typeof NewsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -104,9 +104,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NewsRoute: NewsRoute,
   RoadsRoute: RoadsRoute,
-  TodayRoute: TodayRoute,
-  WeekRoute: WeekRoute,
+  WeatherRoute: WeatherRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
