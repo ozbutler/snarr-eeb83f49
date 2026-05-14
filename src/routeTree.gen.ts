@@ -10,18 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WeekRouteImport } from './routes/week'
-import { Route as TodayRouteImport } from './routes/today'
 import { Route as RoadsRouteImport } from './routes/roads'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WeekRoute = WeekRouteImport.update({
   id: '/week',
   path: '/week',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TodayRoute = TodayRouteImport.update({
-  id: '/today',
-  path: '/today',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RoadsRoute = RoadsRouteImport.update({
@@ -38,34 +32,30 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/roads': typeof RoadsRoute
-  '/today': typeof TodayRoute
   '/week': typeof WeekRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/roads': typeof RoadsRoute
-  '/today': typeof TodayRoute
   '/week': typeof WeekRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/roads': typeof RoadsRoute
-  '/today': typeof TodayRoute
   '/week': typeof WeekRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/roads' | '/today' | '/week'
+  fullPaths: '/' | '/roads' | '/week'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/roads' | '/today' | '/week'
-  id: '__root__' | '/' | '/roads' | '/today' | '/week'
+  to: '/' | '/roads' | '/week'
+  id: '__root__' | '/' | '/roads' | '/week'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   RoadsRoute: typeof RoadsRoute
-  TodayRoute: typeof TodayRoute
   WeekRoute: typeof WeekRoute
 }
 
@@ -76,13 +66,6 @@ declare module '@tanstack/react-router' {
       path: '/week'
       fullPath: '/week'
       preLoaderRoute: typeof WeekRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/today': {
-      id: '/today'
-      path: '/today'
-      fullPath: '/today'
-      preLoaderRoute: typeof TodayRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/roads': {
@@ -105,7 +88,6 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   RoadsRoute: RoadsRoute,
-  TodayRoute: TodayRoute,
   WeekRoute: WeekRoute,
 }
 export const routeTree = rootRouteImport
