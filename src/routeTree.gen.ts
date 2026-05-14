@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WeatherRouteImport } from './routes/weather'
 import { Route as RoadsRouteImport } from './routes/roads'
+import { Route as NewsRouteImport } from './routes/news'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WeatherRoute = WeatherRouteImport.update({
@@ -23,6 +24,11 @@ const RoadsRoute = RoadsRouteImport.update({
   path: '/roads',
   getParentRoute: () => rootRouteImport,
 } as any)
+const NewsRoute = NewsRouteImport.update({
+  id: '/news',
+  path: '/news',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,30 +37,34 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/news': typeof NewsRoute
   '/roads': typeof RoadsRoute
   '/weather': typeof WeatherRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/news': typeof NewsRoute
   '/roads': typeof RoadsRoute
   '/weather': typeof WeatherRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/news': typeof NewsRoute
   '/roads': typeof RoadsRoute
   '/weather': typeof WeatherRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/roads' | '/weather'
+  fullPaths: '/' | '/news' | '/roads' | '/weather'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/roads' | '/weather'
-  id: '__root__' | '/' | '/roads' | '/weather'
+  to: '/' | '/news' | '/roads' | '/weather'
+  id: '__root__' | '/' | '/news' | '/roads' | '/weather'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  NewsRoute: typeof NewsRoute
   RoadsRoute: typeof RoadsRoute
   WeatherRoute: typeof WeatherRoute
 }
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RoadsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/news': {
+      id: '/news'
+      path: '/news'
+      fullPath: '/news'
+      preLoaderRoute: typeof NewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  NewsRoute: NewsRoute,
   RoadsRoute: RoadsRoute,
   WeatherRoute: WeatherRoute,
 }
