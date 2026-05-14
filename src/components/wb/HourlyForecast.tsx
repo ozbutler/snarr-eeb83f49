@@ -18,10 +18,25 @@ function clothingEmoji(temp: number | undefined, rain: number, code: number | un
 export function HourlyForecast() {
   const { forecast, units } = useApp();
   if (!forecast) return null;
-  const hours: HourlyPoint[] = forecast.hourly.slice(0, 24);
+  // Deduplicate by absolute hour (some providers can return overlapping
+  // entries when bundles merge), keep chronological order, and trim to the
+  // next 24 entries from the current local hour onward.
+  const nowMs = Date.now();
+  const currentHourStart = new Date();
+  currentHourStart.setMinutes(0, 0, 0);
+  const seen = new Set<number>();
+  const hours: HourlyPoint[] = [];
+  for (const h of forecast.hourly) {
+    const t = new Date(h.time).getTime();
+    if (t < currentHourStart.getTime()) continue;
+    // Bucket by hour-of-epoch so duplicates collapse.
+    const key = Math.floor(t / (60 * 60 * 1000));
+    if (seen.has(key)) continue;
+    seen.add(key);
+    hours.push(h);
+    if (hours.length >= 24) break;
+  }
   if (hours.length === 0) return null;
-
-  const nowH = new Date().getHours();
 
   return (
     <section className="rounded-2xl bg-card border border-border shadow-[var(--shadow-card)] overflow-hidden">
@@ -37,7 +52,10 @@ export function HourlyForecast() {
       >
         {hours.map((h, i) => {
           const d = new Date(h.time);
-          const isCurrent = d.getHours() === nowH && i < 2;
+          // "Now" only on the very first card and only if it actually
+          // matches the current local hour.
+          const isCurrent =
+            i === 0 && d.getTime() <= nowMs && nowMs - d.getTime() < 60 * 60 * 1000;
           const desc = describeCode(h.weatherCode ?? 0, d.getHours() >= 6 && d.getHours() < 19);
           const timeLabel = isCurrent
             ? "Now"
@@ -47,25 +65,25 @@ export function HourlyForecast() {
             <div
               key={h.time}
               className={
-                "snap-start shrink-0 w-[68px] rounded-xl px-2 py-2.5 flex flex-col items-center gap-1 transition " +
+                "snap-start shrink-0 w-[72px] rounded-xl px-1.5 py-2.5 flex flex-col items-center gap-1 transition " +
                 (isCurrent
                   ? "bg-primary/10 border-2 border-primary/40 shadow-[var(--shadow-card)] text-foreground"
                   : "bg-secondary/50 border border-border/60 text-foreground/90")
               }
             >
-              <div className={"text-[10px] uppercase tracking-wide " + (isCurrent ? "font-semibold text-primary" : "text-muted-foreground")}>
+              <div className={"text-[10px] uppercase tracking-wide leading-none " + (isCurrent ? "font-semibold text-primary" : "text-muted-foreground")}>
                 {timeLabel}
               </div>
-              <div className="text-xl leading-none">{desc.emoji}</div>
-              <div className={"text-[13px] " + (isCurrent ? "font-bold" : "font-semibold")}>
+              <div className="text-lg leading-none">{desc.emoji}</div>
+              <div className={"text-[13px] leading-none " + (isCurrent ? "font-bold" : "font-semibold")}>
                 {h.temp !== undefined ? fmtTemp(h.temp, units) : "—"}
               </div>
               {h.feelsLike !== undefined && (
-                <div className="text-[9.5px] text-muted-foreground leading-none">
-                  feels {fmtTemp(h.feelsLike, units)}
+                <div className="text-[9px] text-muted-foreground leading-none whitespace-nowrap">
+                  ft {fmtTemp(h.feelsLike, units)}
                 </div>
               )}
-              <div className="text-[10px] text-blue-500/90 dark:text-blue-300/90 leading-none">
+              <div className="text-[10px] text-blue-500/90 dark:text-blue-300/90 leading-none whitespace-nowrap">
                 💧 {h.rainChance}%
               </div>
               <div className="text-sm leading-none">{cloth}</div>
