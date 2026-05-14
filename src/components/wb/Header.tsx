@@ -7,16 +7,14 @@ import roadsLogo from "@/assets/logos/snarr-roads-logo.png";
 
 const TABS = [
   { to: "/", label: "Home" },
-  { to: "/today", label: "Today" },
-  { to: "/week", label: "Week" },
+  { to: "/weather", label: "Weather" },
   { to: "/roads", label: "Roads" },
+  { to: "/news", label: "News" },
 ] as const;
 
 const LOGO_MAP: Record<string, { src: string; alt: string }> = {
   "/": { src: homeLogo, alt: "Snarr home logo" },
-  "/home": { src: homeLogo, alt: "Snarr home logo" },
-  "/today": { src: weatherLogo, alt: "Snarr weather logo" },
-  "/week": { src: weatherLogo, alt: "Snarr weather logo" },
+  "/weather": { src: weatherLogo, alt: "Snarr weather logo" },
   "/roads": { src: roadsLogo, alt: "Snarr roads logo" },
   "/news": { src: homeLogo, alt: "Snarr home logo" },
 };
@@ -74,7 +72,8 @@ export function Header() {
 
         <nav className="mt-2.5 grid grid-cols-4 gap-1 p-0.5 bg-secondary/70 rounded-xl">
           {TABS.map((t) => {
-            const active = pathname === t.to;
+            const active =
+              t.to === "/" ? pathname === "/" : pathname.startsWith(t.to);
             return (
               <Link
                 key={t.to}
