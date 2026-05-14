@@ -32,7 +32,7 @@ function NextDaysCard() {
     <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between px-1">
         <h2 className="text-[13px] font-semibold text-foreground">Next 3 Days</h2>
-        <Link to="/week" className="text-[11px] text-primary font-medium">Full week →</Link>
+        <Link to="/weather" search={{ tab: "week" }} className="text-[11px] text-primary font-medium">Full week →</Link>
       </div>
       <div className="mt-2 grid grid-cols-3 gap-1.5">
         {days.map((d) => {
