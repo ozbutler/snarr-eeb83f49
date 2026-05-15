@@ -47,18 +47,10 @@ function articleId(section: NewsSection, title: string, url: string) {
 }
 
 function getNewsApiKey() {
-  return (
-    process.env.NEWS_API_KEY ||
-    process.env.VITE_NEWS_API_KEY ||
-    import.meta.env?.NEWS_API_KEY ||
-    import.meta.env?.VITE_NEWS_API_KEY
-  );
+  return process.env.NEWS_API_KEY;
 }
 
-async function fetchSection(section: NewsSection, seen: Set<string>): Promise<NewsArticle[]> {
-  const key = getNewsApiKey();
-  if (!key) return [];
-
+async function fetchSection(section: NewsSection, seen: Set<string>, key: string): Promise<NewsArticle[]> {
   const base = "https://newsapi.org/v2";
   const params = new URLSearchParams({
     apiKey: key,
@@ -125,15 +117,23 @@ async function fetchSection(section: NewsSection, seen: Set<string>): Promise<Ne
 export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async (): Promise<NewsBundle> => {
   if (cache && cache.expiresAt > Date.now()) return cache.data;
 
-  const seen = new Set<string>();
+  const key = getNewsApiKey();
   const sectionIds: NewsSection[] = ["top", "us", "world", "technology", "business", "sports"];
-  const results = await Promise.allSettled(
-    sectionIds.map(async (section) => [section, await fetchSection(section, seen)] as const),
-  );
-
   const sections = Object.fromEntries(
     sectionIds.map((section) => [section, [] as NewsArticle[]]),
   ) as Record<NewsSection, NewsArticle[]>;
+
+  if (!key) {
+    return {
+      sections,
+      updatedAt: Date.now(),
+    };
+  }
+
+  const seen = new Set<string>();
+  const results = await Promise.allSettled(
+    sectionIds.map(async (section) => [section, await fetchSection(section, seen, key)] as const),
+  );
 
   for (const result of results) {
     if (result.status === "fulfilled") {
