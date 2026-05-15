@@ -47,11 +47,7 @@ function articleId(section: NewsSection, title: string, url: string) {
 }
 
 function getNewsApiKey() {
-  return (
-    process.env.NEWS_API_KEY ||
-    process.env.VITE_NEWS_API_KEY ||
-    "8cd1a8b3be5d4940973739344a2ea858"
-  );
+  return process.env.NEWS_API_KEY || process.env.VITE_NEWS_API_KEY;
 }
 
 async function fetchSection(section: NewsSection, seen: Set<string>): Promise<NewsArticle[]> {
