@@ -55,7 +55,7 @@ export function MorningSummaryCard() {
       <p className="mt-2 text-[12px] text-foreground/70">{outfitLine}</p>
 
       <div className="mt-3 flex items-center justify-between gap-2">
-        <ConfidenceBadge level={confidence} compact />
+        <ConfidenceBadge level={confidence} sources={sources} compact />
         <VerifiedBadge sources={sources} />
       </div>
     </section>
