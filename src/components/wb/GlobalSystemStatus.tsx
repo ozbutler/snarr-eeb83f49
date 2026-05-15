@@ -1,9 +1,22 @@
 import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useApp } from "@/lib/weather/AppContext";
-import { SourceStatus, type SourceStatusItem } from "./SourceStatus";
+import { SourceStatus, type SourceStatusItem, type SourceStatusState } from "./SourceStatus";
+import { fetchNewsBriefing } from "@/lib/news/newsApi";
+import { fetchTomTomTraffic } from "@/lib/traffic/tomtomTraffic";
 
 type OverallStatus = "operational" | "partial" | "major";
+type SourceKey = "weather" | "radar" | "traffic" | "news" | "location" | "deviceTime";
+
+type CheckResult = {
+  status: SourceStatusState;
+  message: string;
+  lastUpdated: number;
+  isFallbackData?: boolean;
+};
+
+type CheckState = Partial<Record<SourceKey, CheckResult>>;
+type RefreshingState = Partial<Record<SourceKey, boolean>>;
 
 function getOverallStatus(sources: SourceStatusItem[]): OverallStatus {
   const hasError = sources.some((source) => source.status === "error");
@@ -38,15 +51,138 @@ function getStatusMeta(status: OverallStatus) {
   };
 }
 
+async function checkRadarSource(): Promise<CheckResult> {
+  // The radar is rendered by Windy in an iframe/map layer. The best lightweight
+  // check here is browser network availability, because iframe providers often
+  // block direct fetch probes with CORS.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return {
+      status: "error",
+      message: "Device appears offline, radar may not load.",
+      lastUpdated: Date.now(),
+      isFallbackData: true,
+    };
+  }
+
+  return {
+    status: "success",
+    message: "Radar source check passed. Open the radar page to verify the live map layer visually.",
+    lastUpdated: Date.now(),
+  };
+}
+
 export function GlobalSystemStatus() {
-  const { forecast, loading, error, selected, locationPermission } = useApp();
+  const {
+    forecast,
+    loading,
+    error,
+    selected,
+    locationPermission,
+    refresh,
+    requestCurrentLocation,
+  } = useApp();
   const [open, setOpen] = useState(false);
+  const [checks, setChecks] = useState<CheckState>({});
+  const [refreshing, setRefreshing] = useState<RefreshingState>({});
+
+  async function runCheck(key: SourceKey) {
+    if (refreshing[key]) return;
+
+    setRefreshing((prev) => ({ ...prev, [key]: true }));
+
+    try {
+      let result: CheckResult;
+
+      if (key === "weather") {
+        refresh();
+        result = {
+          status: "warning",
+          message: "Weather refresh requested. The forecast will update when the API responds.",
+          lastUpdated: Date.now(),
+        };
+      } else if (key === "traffic") {
+        const liveTraffic = await fetchTomTomTraffic({ data: { lat: selected.lat, lon: selected.lon } });
+        result = liveTraffic
+          ? {
+              status: "success",
+              message: "Traffic API responded successfully.",
+              lastUpdated: liveTraffic.updatedAt ?? Date.now(),
+            }
+          : {
+              status: "error",
+              message: "Traffic API did not return live data. The app should use weather-based traffic estimates.",
+              lastUpdated: Date.now(),
+              isFallbackData: true,
+            };
+      } else if (key === "news") {
+        const news = await fetchNewsBriefing();
+        const storyCount = news
+          ? Object.values(news.sections).reduce((total, articles) => total + articles.length, 0)
+          : 0;
+
+        result = storyCount > 0
+          ? {
+              status: "success",
+              message: `News API responded successfully with ${storyCount} stor${storyCount === 1 ? "y" : "ies"}.`,
+              lastUpdated: news.updatedAt ?? Date.now(),
+            }
+          : {
+              status: "error",
+              message: "News API responded but did not return stories. Check the API key, quota, or source response.",
+              lastUpdated: news?.updatedAt ?? Date.now(),
+              isFallbackData: true,
+            };
+      } else if (key === "location") {
+        if (selected.current) {
+          requestCurrentLocation();
+          result = {
+            status: locationPermission === "denied" ? "error" : "warning",
+            message: "Requested a fresh current-location check. Your browser may ask for permission.",
+            lastUpdated: Date.now(),
+            isFallbackData: locationPermission !== "granted",
+          };
+        } else {
+          result = {
+            status: "success",
+            message: "Saved selected location is available.",
+            lastUpdated: Date.now(),
+          };
+        }
+      } else if (key === "deviceTime") {
+        const now = new Date();
+        result = {
+          status: Number.isNaN(now.getTime()) ? "error" : "success",
+          message: Number.isNaN(now.getTime())
+            ? "Device time could not be read."
+            : `Device time loaded successfully: ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`,
+          lastUpdated: Date.now(),
+        };
+      } else {
+        result = await checkRadarSource();
+      }
+
+      setChecks((prev) => ({ ...prev, [key]: result }));
+    } catch (e) {
+      setChecks((prev) => ({
+        ...prev,
+        [key]: {
+          status: "error",
+          message: e instanceof Error ? e.message : "Source check failed.",
+          lastUpdated: Date.now(),
+          isFallbackData: true,
+        },
+      }));
+    } finally {
+      setRefreshing((prev) => ({ ...prev, [key]: false }));
+    }
+  }
 
   const sources = useMemo<SourceStatusItem[]>(() => {
     const weatherSources = forecast?.sources?.length ? forecast.sources : ["Weather API"];
+    const liveLocationWarning = selected.current && locationPermission !== "granted";
 
-    return [
-      {
+    const baseSources: Record<SourceKey, SourceStatusItem> = {
+      weather: {
         sourceName: weatherSources.length > 1 ? "Weather APIs" : weatherSources[0],
         status: error ? "error" : loading && !forecast ? "warning" : forecast ? "success" : "warning",
         lastUpdated: forecast?.updatedAt,
@@ -59,31 +195,30 @@ export function GlobalSystemStatus() {
               : "Waiting for weather data.",
         isFallbackData: false,
       },
-      {
+      radar: {
         sourceName: "Radar Source",
         status: "success",
         message: "Radar source is available on the radar page.",
       },
-      {
+      traffic: {
         sourceName: "Traffic API",
         status: "warning",
-        message: "Traffic status is checked on the Roads page and falls back to weather-based estimates if unavailable.",
+        message: "Tap to check TomTom traffic now. If it fails, the app uses weather-based road estimates.",
         isFallbackData: false,
       },
-      {
+      news: {
         sourceName: "News API",
         status: "warning",
-        message: "News status is checked on the News page when the briefing loads.",
+        message: "Tap to check the News API now instead of waiting until the News page opens.",
         isFallbackData: false,
       },
-      {
+      location: {
         sourceName: "Location Services",
-        status:
-          selected.current && locationPermission !== "granted"
-            ? "warning"
-            : locationPermission === "denied" && selected.current
-              ? "error"
-              : "success",
+        status: liveLocationWarning
+          ? "warning"
+          : locationPermission === "denied" && selected.current
+            ? "error"
+            : "success",
         message: selected.current
           ? locationPermission === "granted"
             ? "Current device location loaded successfully."
@@ -91,15 +226,32 @@ export function GlobalSystemStatus() {
               ? "Location permission denied, using saved location data when available."
               : "Current location is waiting for permission."
           : "Using selected saved location.",
-        isFallbackData: selected.current && locationPermission !== "granted",
+        isFallbackData: liveLocationWarning,
       },
-      {
+      deviceTime: {
         sourceName: "Device Time",
         status: "success",
         message: "Device time loaded successfully.",
       },
-    ];
-  }, [error, forecast, loading, locationPermission, selected.current]);
+    };
+
+    return (Object.keys(baseSources) as SourceKey[]).map((key) => {
+      const checked = checks[key];
+      return {
+        ...baseSources[key],
+        ...(checked
+          ? {
+              status: checked.status,
+              message: checked.message,
+              lastUpdated: checked.lastUpdated,
+              isFallbackData: checked.isFallbackData,
+            }
+          : {}),
+        isRefreshing: refreshing[key],
+        onRefresh: () => runCheck(key),
+      };
+    });
+  }, [checks, error, forecast, loading, locationPermission, refreshing, selected.current, selected.lat, selected.lon]);
 
   const overall = getOverallStatus(sources);
   const meta = getStatusMeta(overall);
