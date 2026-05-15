@@ -55,13 +55,31 @@ export interface CurrentWeather {
 
 export type Confidence = "high" | "moderate" | "low";
 
+export interface WeatherMetric {
+  metricName: string;
+  value: number | null;
+  sources: string[];
+  sourceCount: number;
+  hasConflict: boolean;
+  rawValues?: Record<string, number>;
+}
+
+export interface ForecastSourceDetails {
+  providersResponded: string[];
+  metrics: Record<string, WeatherMetric>;
+  averagedMetrics: string[];
+  varyingMetrics: string[];
+  alertsSource?: string;
+}
+
 export interface ForecastBundle {
   current: CurrentWeather;
   today: DailyForecast;
   daily: DailyForecast[];        // 7 days incl today
   hourly: HourlyPoint[];         // next ~24h
   alerts: string[];              // severe alert headlines (NWS for US)
-  confidence: Confidence;        // multi-source agreement
+  confidence: Confidence;        // legacy field kept for compatibility
   sources: string[];             // names of sources that responded
+  sourceDetails?: ForecastSourceDetails;
   updatedAt: number;             // epoch ms
 }
