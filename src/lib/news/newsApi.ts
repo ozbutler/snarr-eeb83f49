@@ -23,7 +23,7 @@ type CacheEntry = {
   data: NewsBundle;
 };
 
-const CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 60 * 1000;
 let cache: CacheEntry | null = null;
 
 const SECTION_LABELS: Record<NewsSection, string> = {
@@ -47,12 +47,17 @@ function articleId(section: NewsSection, title: string, url: string) {
 }
 
 function getNewsApiKey() {
-  return process.env.NEWS_API_KEY || process.env.VITE_NEWS_API_KEY;
+  return (
+    process.env.NEWS_API_KEY ||
+    process.env.VITE_NEWS_API_KEY ||
+    import.meta.env?.NEWS_API_KEY ||
+    import.meta.env?.VITE_NEWS_API_KEY
+  );
 }
 
 async function fetchSection(section: NewsSection, seen: Set<string>): Promise<NewsArticle[]> {
   const key = getNewsApiKey();
-  if (!key) throw new Error("News API key is not configured");
+  if (!key) return [];
 
   const base = "https://newsapi.org/v2";
   const params = new URLSearchParams({
@@ -82,33 +87,39 @@ async function fetchSection(section: NewsSection, seen: Set<string>): Promise<Ne
     params.set("sortBy", "publishedAt");
   }
 
-  const res = await fetch(`${endpoint}?${params.toString()}`);
-  if (!res.ok) throw new Error(`NewsAPI failed for ${section}`);
-  const json = await res.json();
-  const articles = Array.isArray(json?.articles) ? json.articles : [];
+  try {
+    const res = await fetch(`${endpoint}?${params.toString()}`);
+    if (!res.ok) return [];
 
-  const out: NewsArticle[] = [];
-  for (const article of articles) {
-    const headline = String(article?.title ?? "").trim();
-    const url = String(article?.url ?? "").trim();
-    if (!headline || !url) continue;
-    const duplicateKey = `${headline.toLowerCase()}|${url}`;
-    if (seen.has(duplicateKey)) continue;
-    seen.add(duplicateKey);
+    const json = await res.json();
+    const articles = Array.isArray(json?.articles) ? json.articles : [];
 
-    out.push({
-      id: articleId(section, headline, url),
-      headline,
-      summary: cleanSummary(article?.description, article?.content),
-      source: article?.source?.name || SECTION_LABELS[section],
-      publishedAt: article?.publishedAt || new Date().toISOString(),
-      url,
-      imageUrl: article?.urlToImage || undefined,
-      section,
-    });
+    const out: NewsArticle[] = [];
+    for (const article of articles) {
+      const headline = String(article?.title ?? "").trim();
+      const url = String(article?.url ?? "").trim();
+      if (!headline || !url) continue;
+
+      const duplicateKey = `${headline.toLowerCase()}|${url}`;
+      if (seen.has(duplicateKey)) continue;
+      seen.add(duplicateKey);
+
+      out.push({
+        id: articleId(section, headline, url),
+        headline,
+        summary: cleanSummary(article?.description, article?.content),
+        source: article?.source?.name || SECTION_LABELS[section],
+        publishedAt: article?.publishedAt || new Date().toISOString(),
+        url,
+        imageUrl: article?.urlToImage || undefined,
+        section,
+      });
+    }
+
+    return out.slice(0, 6);
+  } catch {
+    return [];
   }
-
-  return out.slice(0, 6);
 }
 
 export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async (): Promise<NewsBundle> => {
@@ -116,12 +127,23 @@ export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async
 
   const seen = new Set<string>();
   const sectionIds: NewsSection[] = ["top", "us", "world", "technology", "business", "sports"];
-  const entries = await Promise.all(
+  const results = await Promise.allSettled(
     sectionIds.map(async (section) => [section, await fetchSection(section, seen)] as const),
   );
 
+  const sections = Object.fromEntries(
+    sectionIds.map((section) => [section, [] as NewsArticle[]]),
+  ) as Record<NewsSection, NewsArticle[]>;
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const [section, articles] = result.value;
+      sections[section] = articles;
+    }
+  }
+
   const data: NewsBundle = {
-    sections: Object.fromEntries(entries) as Record<NewsSection, NewsArticle[]>,
+    sections,
     updatedAt: Date.now(),
   };
 
