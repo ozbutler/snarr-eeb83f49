@@ -3,6 +3,10 @@ import { PageShell } from "@/components/wb/PageShell";
 import { useApp } from "@/lib/weather/AppContext";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
+import { fetchTomTomTraffic } from "@/lib/traffic/tomtomTraffic";
+import { trafficEmoji, trafficLabel } from "@/lib/traffic/types";
+import { useEffect, useState } from "react";
+import type { LiveTrafficBriefing } from "@/lib/traffic/types";
 
 export const Route = createFileRoute("/roads")({
   head: () => ({
@@ -26,46 +30,109 @@ function RoadsPage() {
 
 function Content() {
   const { forecast, selected } = useApp();
+  const [liveTraffic, setLiveTraffic] = useState<LiveTrafficBriefing | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchTomTomTraffic({ data: { lat: selected?.lat, lon: selected?.lon } })
+      .then((result) => {
+        if (!cancelled) setLiveTraffic(result ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveTraffic(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.lat, selected?.lon]);
+
   if (!forecast) return null;
+
   const brief = buildRoadBriefing(forecast.today.weatherCode, forecast.today.rainChance);
+
+  const trafficLevel = liveTraffic?.level ?? (brief.level === "high" ? "heavy" : brief.level);
+  const trafficLabelText = trafficLabel(trafficLevel as any);
+  const trafficIcon = trafficEmoji(trafficLevel as any);
+
+  const sourceText = liveTraffic
+    ? "Live traffic from TomTom"
+    : "Estimated from weather and time of day";
+
+  const drivingRecommendation = liveTraffic?.recommendation ?? brief.recommendation;
+
+  const trafficSummary = liveTraffic?.summary ?? brief.summary;
+
+  const congestion = liveTraffic?.congestionPercent;
+
   const levelTone =
-    brief.level === "low" ? "var(--confidence-high)" :
-    brief.level === "moderate" ? "var(--confidence-mid)" :
+    trafficLevel === "light" ? "var(--confidence-high)" :
+    trafficLevel === "moderate" ? "var(--confidence-mid)" :
     "var(--confidence-low)";
 
   return (
     <>
       <section className="rounded-3xl p-5 shadow-[var(--shadow-soft)]" style={{ background: "var(--gradient-sky)" }}>
         <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">{selected.label}</p>
+
         <div className="mt-1.5 flex items-center gap-3">
-          <div className="text-4xl">{brief.icon}</div>
+          <div className="text-4xl">{trafficIcon}</div>
+
           <div>
             <h2 className="text-lg font-semibold flex items-center gap-1.5">
-              <span>{brief.emoji}</span>
-              <span>{brief.level[0].toUpperCase() + brief.level.slice(1)} traffic</span>
+              <span>{trafficIcon}</span>
+              <span>{trafficLabelText} traffic</span>
             </h2>
-            <p className="text-[13px] text-muted-foreground">{brief.summary}</p>
+
+            <p className="text-[13px] text-muted-foreground">{trafficSummary}</p>
           </div>
         </div>
+
         <div className="mt-3 flex flex-wrap gap-1.5">
           <span
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
             style={{ backgroundColor: `color-mix(in oklab, ${levelTone} 18%, transparent)`, color: levelTone }}
           >
-            Traffic · {brief.level}
+            Traffic · {trafficLabelText}
           </span>
+
           <span className="inline-flex items-center gap-1 rounded-full bg-secondary/80 px-2 py-0.5 text-[10px] font-medium text-foreground/80">
             <span>{brief.roadEmoji}</span>
             <span>Roads · {brief.roadLabel}</span>
+          </span>
+
+          <span className="inline-flex items-center gap-1 rounded-full bg-card/70 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {sourceText}
           </span>
         </div>
       </section>
 
       <CollapsibleCard
-        id="roads:impact"
-        title="Weather impact on roads"
-        icon={brief.roadEmoji}
+        id="roads:traffic-status"
+        title="Traffic Status"
+        icon={trafficIcon}
+        summary={congestion !== undefined ? `${congestion}% congestion` : trafficLabelText}
+      >
+        <div className="space-y-2 text-sm text-muted-foreground">
+          <p>{trafficSummary}</p>
 
+          {liveTraffic?.currentSpeedMph && liveTraffic?.freeFlowSpeedMph ? (
+            <p>
+              Current speed around {liveTraffic.currentSpeedMph} mph compared to normal free-flow speed of {liveTraffic.freeFlowSpeedMph} mph.
+            </p>
+          ) : null}
+
+          {congestion !== undefined ? (
+            <p>Estimated congestion level: {congestion}%.</p>
+          ) : null}
+        </div>
+      </CollapsibleCard>
+
+      <CollapsibleCard
+        id="roads:impact"
+        title="Road Conditions"
+        icon={brief.roadEmoji}
         summary={brief.weatherImpact}
       >
         <p className="text-sm text-muted-foreground">{brief.weatherImpact}</p>
@@ -73,31 +140,50 @@ function Content() {
 
       <CollapsibleCard
         id="roads:recommendation"
-        title="Driving recommendation"
+        title="Driving Recommendation"
         icon="🧭"
-
-        summary={brief.recommendation}
+        summary={drivingRecommendation}
       >
-        <p className="text-sm text-foreground">{brief.recommendation}</p>
+        <p className="text-sm text-foreground">{drivingRecommendation}</p>
       </CollapsibleCard>
 
-      {brief.alerts.length > 0 && (
-        <CollapsibleCard
-          id="roads:alerts"
-          title="Road alerts"
-          icon="⚠️"
-          tone="alert"
+      <CollapsibleCard
+        id="roads:incidents"
+        title="Nearby Incidents"
+        icon="🚧"
+        summary={liveTraffic?.incidents?.length ? `${liveTraffic.incidents.length} nearby` : "No major incidents"}
+      >
+        {liveTraffic?.incidents?.length ? (
+          <div className="space-y-2">
+            {liveTraffic.incidents.map((incident) => (
+              <div key={incident.id} className="rounded-2xl bg-secondary/40 p-3 text-sm">
+                <div className="font-medium text-foreground">{incident.description}</div>
 
-          summary={`${brief.alerts.length} alert${brief.alerts.length === 1 ? "" : "s"}`}
-        >
-          <ul className="space-y-1 text-sm">
-            {brief.alerts.map((a, i) => <li key={i}>• {a}</li>)}
-          </ul>
-        </CollapsibleCard>
-      )}
+                <div className="mt-1 text-xs text-muted-foreground flex flex-wrap gap-2">
+                  <span>{trafficLabel(incident.severity)}</span>
+                  {incident.roadName ? <span>{incident.roadName}</span> : null}
+                  {incident.delaySeconds ? <span>{Math.round(incident.delaySeconds / 60)} min delay</span> : null}
+                  {incident.isClosure ? <span>Road closure</span> : null}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No major nearby incidents.</p>
+        )}
+      </CollapsibleCard>
+
+      <CollapsibleCard
+        id="roads:weather-impact"
+        title="Weather Impact"
+        icon="🌧️"
+        summary={brief.weatherImpact}
+      >
+        <p className="text-sm text-muted-foreground">{brief.weatherImpact}</p>
+      </CollapsibleCard>
 
       <p className="text-center text-[11px] text-muted-foreground">
-        Traffic estimated from time of day, day of week, and current weather.
+        {sourceText}
       </p>
     </>
   );
