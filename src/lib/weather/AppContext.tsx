@@ -3,7 +3,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { LocationOption, Units, ForecastBundle } from "./types";
-import { fetchForecast, reverseGeocode } from "./weatherApi";
+import { reverseGeocode } from "./weatherApi";
+import { fetchCachedForecast } from "./forecastCache";
 
 const DEFAULT_LOCATIONS: LocationOption[] = [
   { id: "phl", label: "Philadelphia, PA", lat: 39.9526, lon: -75.1652 },
@@ -18,7 +19,7 @@ const LS_KEY_SELECTED = "wb.selectedLocation";
 const LS_KEY_UNITS = "wb.units";
 const LS_KEY_CURRENT_COORDS = "wb.currentCoords";
 const LS_KEY_CURRENT_LABEL = "wb.currentLabel";
-const LS_KEY_PERM = "wb.locPermStatus"; // "granted" | "denied"
+const LS_KEY_PERM = "wb.locPermStatus";
 
 export type LocationPermission = "granted" | "denied" | "prompt" | "unsupported";
 
@@ -61,10 +62,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const c = localStorage.getItem(LS_KEY_LOCATIONS);
       if (c) setCustomLocations(JSON.parse(c));
+
       const s = localStorage.getItem(LS_KEY_SELECTED);
       if (s) setSelectedId(s);
+
       const u = localStorage.getItem(LS_KEY_UNITS) as Units | null;
       if (u === "F" || u === "C") setUnits(u);
+
       const cc = localStorage.getItem(LS_KEY_CURRENT_COORDS);
       if (cc) {
         const parsed = JSON.parse(cc);
@@ -72,6 +76,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           setCurrentLocationCoords(parsed);
         }
       }
+
       const cl = localStorage.getItem(LS_KEY_CURRENT_LABEL);
       if (cl) setCurrentLocationLabel(cl);
     } catch {}
@@ -97,9 +102,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         try {
           localStorage.setItem(LS_KEY_CURRENT_COORDS, JSON.stringify(coords));
-        } catch {}
-
-        try {
           localStorage.setItem(LS_KEY_PERM, "granted");
         } catch {}
 
@@ -136,7 +138,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const stored = localStorage.getItem(LS_KEY_PERM);
-
       if (stored === "granted") setLocationPermission("granted");
       else if (stored === "denied") setLocationPermission("denied");
     } catch {}
@@ -184,7 +185,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
 
-    fetchForecast(selected.lat, selected.lon)
+    fetchCachedForecast(selected.lat, selected.lon, {
+      force: refreshKey > 0,
+    })
       .then((f) => {
         if (!cancelled) setForecast(f);
       })
@@ -238,7 +241,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setUnits((u) => (u === "F" ? "C" : "F"));
   }, []);
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const refresh = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   const value: AppContextValue = {
     locations,
