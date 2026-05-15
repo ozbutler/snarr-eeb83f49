@@ -120,13 +120,27 @@ export function GlobalSystemStatus() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-[min(22rem,calc(100vw-2rem))] animate-fade-in">
-          <SourceStatus
-            title="System Status"
-            sources={sources}
-            compact={false}
+        <>
+          <button
+            type="button"
+            aria-label="Close system source status"
+            className="fixed inset-0 z-30 cursor-default bg-transparent"
+            onClick={() => setOpen(false)}
           />
-        </div>
+          <div
+            className="fixed left-4 right-4 z-40 mx-auto max-w-md animate-fade-in overflow-y-auto overscroll-contain rounded-3xl shadow-[var(--shadow-soft)]"
+            style={{
+              top: "calc(env(safe-area-inset-top) + 5.25rem)",
+              maxHeight: "calc(100vh - env(safe-area-inset-top) - 6.5rem)",
+            }}
+          >
+            <SourceStatus
+              title="System Status"
+              sources={sources}
+              compact={false}
+            />
+          </div>
+        </>
       )}
     </div>
   );
