@@ -80,7 +80,7 @@ export function HourlyForecast() {
               </div>
               {h.feelsLike !== undefined && (
                 <div className="text-[9px] text-muted-foreground leading-none whitespace-nowrap">
-                  ft {fmtTemp(h.feelsLike, units)}
+                  Feels {fmtTemp(h.feelsLike, units)}
                 </div>
               )}
               <div className="text-[10px] text-blue-500/90 dark:text-blue-300/90 leading-none whitespace-nowrap">
