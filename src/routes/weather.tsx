@@ -9,6 +9,7 @@ import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { HourlyForecast } from "@/components/wb/HourlyForecast";
 import { OutdoorConditionsDetailed } from "@/components/wb/OutdoorConditions";
 import { WeatherCard } from "@/components/wb/WeatherCard";
+import { RadarMap } from "@/components/wb/RadarMap";
 import type { DailyForecast } from "@/lib/weather/types";
 
 type Tab = "today" | "week" | "radar";
@@ -213,17 +214,42 @@ function WeekPanel() {
 }
 
 function RadarPanel() {
+  const { selected } = useApp();
+
   return (
-    <section className="rounded-3xl bg-card p-8 shadow-[var(--shadow-card)] text-center">
-      <div className="mx-auto h-16 w-16 rounded-full bg-secondary/70 flex items-center justify-center text-3xl">
-        📡
-      </div>
-      <h2 className="mt-4 text-base font-semibold text-foreground">Radar coming soon</h2>
-      <p className="mt-1.5 text-xs text-muted-foreground max-w-xs mx-auto">
-        Live precipitation radar for your location is on the way. We're polishing
-        the experience so it loads quickly and stays accurate.
+    <>
+      <section
+        className="rounded-3xl p-5 shadow-[var(--shadow-soft)]"
+        style={{ background: "var(--gradient-sky)" }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+              {selected.label}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">
+              Live precipitation radar
+            </h2>
+          </div>
+
+          <div className="text-4xl leading-none">📡</div>
+        </div>
+
+        <p className="mt-2 text-[13px] text-muted-foreground leading-relaxed">
+          Radar updates automatically for your selected location.
+        </p>
+      </section>
+
+      <RadarMap
+        lat={selected.lat}
+        lon={selected.lon}
+        label={selected.label}
+      />
+
+      <p className="text-center text-[11px] text-muted-foreground">
+        Live radar imagery powered by Windy.
       </p>
-    </section>
+    </>
   );
 }
 
