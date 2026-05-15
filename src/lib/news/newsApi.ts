@@ -46,9 +46,13 @@ function articleId(section: NewsSection, title: string, url: string) {
   return `${section}:${title}:${url}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 120);
 }
 
+function getNewsApiKey() {
+  return process.env.NEWS_API_KEY || process.env.VITE_NEWS_API_KEY;
+}
+
 async function fetchSection(section: NewsSection, seen: Set<string>): Promise<NewsArticle[]> {
-  const key = process.env.NEWS_API_KEY;
-  if (!key) throw new Error("NEWS_API_KEY is not configured");
+  const key = getNewsApiKey();
+  if (!key) throw new Error("NEWS_API_KEY or VITE_NEWS_API_KEY is not configured");
 
   const base = "https://newsapi.org/v2";
   const params = new URLSearchParams({
