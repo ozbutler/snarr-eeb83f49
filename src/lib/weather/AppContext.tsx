@@ -44,7 +44,6 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  // Custom (user-added) locations.
   const [customLocations, setCustomLocations] = useState<LocationOption[]>([]);
   const [selectedId, setSelectedId] = useState<string>("phl");
   const [units, setUnits] = useState<Units>("F");
@@ -58,7 +57,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  // Hydrate from localStorage on mount.
   useEffect(() => {
     try {
       const c = localStorage.getItem(LS_KEY_LOCATIONS);
@@ -76,62 +74,86 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       const cl = localStorage.getItem(LS_KEY_CURRENT_LABEL);
       if (cl) setCurrentLocationLabel(cl);
-    } catch { /* ignore */ }
+    } catch {}
   }, []);
 
-  // Request the device's live location. Resolves permission state.
   const requestCurrentLocation = useCallback(() => {
     if (!("geolocation" in navigator)) {
       setLocationPermission("unsupported");
       return;
     }
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        const coords = {
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+        };
+
         setCurrentLocationCoords(coords);
         setLocationPermission("granted");
-        try { localStorage.setItem(LS_KEY_CURRENT_COORDS, JSON.stringify(coords)); } catch {}
-        try { localStorage.setItem(LS_KEY_PERM, "granted"); } catch {}
+        setSelectedId("current");
+        setRefreshKey((k) => k + 1);
+
+        try {
+          localStorage.setItem(LS_KEY_CURRENT_COORDS, JSON.stringify(coords));
+        } catch {}
+
+        try {
+          localStorage.setItem(LS_KEY_PERM, "granted");
+        } catch {}
+
         const label = await reverseGeocode(coords.lat, coords.lon);
+
         if (label) {
           setCurrentLocationLabel(label);
-          try { localStorage.setItem(LS_KEY_CURRENT_LABEL, label); } catch {}
+
+          try {
+            localStorage.setItem(LS_KEY_CURRENT_LABEL, label);
+          } catch {}
         }
       },
       () => {
         setLocationPermission("denied");
-        try { localStorage.setItem(LS_KEY_PERM, "denied"); } catch {}
+
+        try {
+          localStorage.setItem(LS_KEY_PERM, "denied");
+        } catch {}
       },
-      { timeout: 10000, enableHighAccuracy: false, maximumAge: 5 * 60 * 1000 },
+      {
+        timeout: 10000,
+        enableHighAccuracy: true,
+        maximumAge: 0,
+      },
     );
   }, []);
 
-  // Hydrate previously stored permission state — never auto-prompt on mount.
-  // The user must explicitly tap "Current Location" to trigger a request.
   useEffect(() => {
     if (typeof navigator === "undefined" || !("geolocation" in navigator)) {
       setLocationPermission("unsupported");
       return;
     }
+
     try {
       const stored = localStorage.getItem(LS_KEY_PERM);
+
       if (stored === "granted") setLocationPermission("granted");
       else if (stored === "denied") setLocationPermission("denied");
-    } catch { /* ignore */ }
+    } catch {}
   }, []);
 
-  // Persist when things change.
   useEffect(() => {
     localStorage.setItem(LS_KEY_LOCATIONS, JSON.stringify(customLocations));
   }, [customLocations]);
+
   useEffect(() => {
     localStorage.setItem(LS_KEY_SELECTED, selectedId);
   }, [selectedId]);
+
   useEffect(() => {
     localStorage.setItem(LS_KEY_UNITS, units);
   }, [units]);
 
-  // Build the full location list, including the dynamic "Current Location".
   const locations = useMemo<LocationOption[]>(() => {
     const current: LocationOption | null = currentLocationCoords
       ? {
@@ -144,46 +166,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           current: true,
         }
       : null;
-    const list = [
+
+    return [
       ...(current ? [current] : []),
       ...DEFAULT_LOCATIONS,
       ...customLocations,
     ];
-    return list;
   }, [currentLocationCoords, currentLocationLabel, customLocations]);
 
-  // Resolve selected, falling back to Philadelphia if missing.
   const selected = useMemo<LocationOption>(() => {
     return locations.find((l) => l.id === selectedId) ?? DEFAULT_LOCATIONS[0];
   }, [locations, selectedId]);
 
-  // Fetch forecast whenever selected location or refresh changes.
   useEffect(() => {
     let cancelled = false;
+
     setLoading(true);
     setError(null);
+
     fetchForecast(selected.lat, selected.lon)
-      .then((f) => { if (!cancelled) setForecast(f); })
-      .catch((e) => { if (!cancelled) setError(e?.message ?? "Failed to load forecast"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then((f) => {
+        if (!cancelled) setForecast(f);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(e?.message ?? "Failed to load forecast");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selected.lat, selected.lon, refreshKey]);
 
-  const setSelected = useCallback((id: string) => setSelectedId(id), []);
+  const setSelected = useCallback((id: string) => {
+    if (id === "current") {
+      requestCurrentLocation();
+      return;
+    }
+
+    setSelectedId(id);
+  }, [requestCurrentLocation]);
 
   const addLocation = useCallback((loc: Omit<LocationOption, "id" | "custom">) => {
-    // Dedupe across defaults + customs by approximate coords or label.
     const all = [...DEFAULT_LOCATIONS, ...customLocations];
+
     const match = all.find(
       (l) =>
         l.label.toLowerCase() === loc.label.toLowerCase() ||
         (Math.abs(l.lat - loc.lat) < 0.05 && Math.abs(l.lon - loc.lon) < 0.05),
     );
+
     if (match) {
       setSelectedId(match.id);
       return;
     }
+
     const id = `custom-${Date.now()}`;
+
     setCustomLocations((prev) => [...prev, { ...loc, id, custom: true }]);
     setSelectedId(id);
   }, [customLocations]);
@@ -200,20 +241,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const value: AppContextValue = {
-    locations, selected, setSelected,
-    addLocation, removeLocation,
-    units, toggleUnits,
-    forecast, loading, error, refresh,
-    currentLocationCoords, setCurrentLocationCoords,
+    locations,
+    selected,
+    setSelected,
+    addLocation,
+    removeLocation,
+    units,
+    toggleUnits,
+    forecast,
+    loading,
+    error,
+    refresh,
+    currentLocationCoords,
+    setCurrentLocationCoords,
     currentLocationLabel,
     locationPermission,
     requestCurrentLocation,
   };
+
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function useApp() {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useApp must be used within AppProvider");
+
+  if (!ctx) {
+    throw new Error("useApp must be used within AppProvider");
+  }
+
   return ctx;
 }
