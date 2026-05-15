@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Database, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, RefreshCw, XCircle } from "lucide-react";
 
 export type SourceStatusState = "success" | "warning" | "error";
 
@@ -8,6 +8,8 @@ export interface SourceStatusItem {
   lastUpdated?: number | string | Date | null;
   message?: string;
   isFallbackData?: boolean;
+  isRefreshing?: boolean;
+  onRefresh?: () => void | Promise<void>;
 }
 
 interface SourceStatusProps {
@@ -69,11 +71,18 @@ export function SourceStatus({ sources, title = "Sources", compact = true }: Sou
           const config = STATUS_CONFIG[source.status];
           const Icon = config.icon;
           const updatedAt = formatUpdatedAt(source.lastUpdated);
+          const clickable = !!source.onRefresh;
+          const Wrapper = clickable ? "button" : "div";
 
           return (
-            <div
+            <Wrapper
               key={`${source.sourceName}-${source.message ?? source.status}`}
-              className="rounded-xl bg-secondary/40 px-2.5 py-2"
+              type={clickable ? "button" : undefined}
+              onClick={clickable ? source.onRefresh : undefined}
+              className={
+                "w-full rounded-xl bg-secondary/40 px-2.5 py-2 text-left transition-colors " +
+                (clickable ? "hover:bg-secondary/70 active:scale-[0.99] cursor-pointer" : "")
+              }
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
@@ -84,6 +93,9 @@ export function SourceStatus({ sources, title = "Sources", compact = true }: Sou
                     <span className="truncate text-[12px] font-medium text-foreground">
                       {source.sourceName}
                     </span>
+                    {clickable && (
+                      <RefreshCw className={`h-3 w-3 text-muted-foreground ${source.isRefreshing ? "animate-spin" : ""}`} />
+                    )}
                   </div>
 
                   {source.message && (
@@ -91,11 +103,16 @@ export function SourceStatus({ sources, title = "Sources", compact = true }: Sou
                       {source.message}
                     </p>
                   )}
+                  {clickable && (
+                    <p className="mt-1 text-[10px] text-muted-foreground/80">
+                      Tap to re-check this source.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${config.bg} ${config.tone}`}>
-                    {source.isFallbackData ? "Fallback" : config.label}
+                    {source.isRefreshing ? "Checking" : source.isFallbackData ? "Fallback" : config.label}
                   </span>
                   {updatedAt && (
                     <span className="text-[10px] text-muted-foreground">
@@ -104,7 +121,7 @@ export function SourceStatus({ sources, title = "Sources", compact = true }: Sou
                   )}
                 </div>
               </div>
-            </div>
+            </Wrapper>
           );
         })}
       </div>
