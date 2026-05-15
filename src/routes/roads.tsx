@@ -31,9 +31,12 @@ function RoadsPage() {
 function Content() {
   const { forecast, selected } = useApp();
   const [liveTraffic, setLiveTraffic] = useState<LiveTrafficBriefing | null>(null);
+  const [trafficLoading, setTrafficLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+
+    setTrafficLoading(true);
 
     fetchTomTomTraffic({ data: { lat: selected?.lat, lon: selected?.lon } })
       .then((result) => {
@@ -41,6 +44,9 @@ function Content() {
       })
       .catch(() => {
         if (!cancelled) setLiveTraffic(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTrafficLoading(false);
       });
 
     return () => {
@@ -58,12 +64,12 @@ function Content() {
 
   const sourceText = liveTraffic
     ? "Live traffic from TomTom"
-    : "Estimated from weather and time of day";
+    : trafficLoading
+      ? "Checking live traffic..."
+      : "Estimated from weather and time of day";
 
   const drivingRecommendation = liveTraffic?.recommendation ?? brief.recommendation;
-
   const trafficSummary = liveTraffic?.summary ?? brief.summary;
-
   const congestion = liveTraffic?.congestionPercent;
 
   const levelTone =
@@ -112,7 +118,7 @@ function Content() {
         id="roads:traffic-status"
         title="Traffic Status"
         icon={trafficIcon}
-        summary={congestion !== undefined ? `${congestion}% congestion` : trafficLabelText}
+        summary={trafficLoading ? "Loading live traffic..." : congestion !== undefined ? `${congestion}% congestion` : trafficLabelText}
       >
         <div className="space-y-2 text-sm text-muted-foreground">
           <p>{trafficSummary}</p>
@@ -153,7 +159,9 @@ function Content() {
         icon="🚧"
         summary={liveTraffic?.incidents?.length ? `${liveTraffic.incidents.length} nearby` : "No major incidents"}
       >
-        {liveTraffic?.incidents?.length ? (
+        {trafficLoading ? (
+          <p className="text-sm text-muted-foreground">Checking live incidents...</p>
+        ) : liveTraffic?.incidents?.length ? (
           <div className="space-y-2">
             {liveTraffic.incidents.map((incident) => (
               <div key={incident.id} className="rounded-2xl bg-secondary/40 p-3 text-sm">
