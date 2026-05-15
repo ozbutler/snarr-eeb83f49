@@ -10,6 +10,7 @@ import { HourlyForecast } from "@/components/wb/HourlyForecast";
 import { OutdoorConditionsDetailed } from "@/components/wb/OutdoorConditions";
 import { WeatherCard } from "@/components/wb/WeatherCard";
 import { RadarMap } from "@/components/wb/RadarMap";
+import { SourceStatus } from "@/components/wb/SourceStatus";
 import type { DailyForecast } from "@/lib/weather/types";
 
 type Tab = "today" | "week" | "radar";
@@ -76,7 +77,7 @@ function SubTabs({ value, onChange }: { value: Tab; onChange: (t: Tab) => void }
 }
 
 function TodayPanel() {
-  const { forecast, selected, units } = useApp();
+  const { forecast, selected, units, locationPermission } = useApp();
   if (!forecast) return null;
   const { current, today, hourly, alerts, confidence, sources, updatedAt } = forecast;
   const desc = describeCode(today.weatherCode, current.isDay);
@@ -183,6 +184,34 @@ function TodayPanel() {
         </p>
       </CollapsibleCard>
 
+      <SourceStatus
+        sources={[
+          {
+            sourceName: sources.length > 1 ? "Weather APIs" : sources[0] ?? "Weather API",
+            status: "success",
+            lastUpdated: updatedAt,
+            message: sources.length > 1
+              ? `Weather loaded successfully from ${sources.join(" and ")}.`
+              : "Weather API loaded successfully.",
+          },
+          {
+            sourceName: "Device Time",
+            status: "success",
+            message: "Device time loaded successfully.",
+          },
+          {
+            sourceName: "Location Services",
+            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
+            message: selected.current
+              ? locationPermission === "granted"
+                ? "Current device location loaded successfully."
+                : "Using saved current location because live permission is not granted."
+              : "Using selected saved location.",
+            isFallbackData: selected.current && locationPermission !== "granted",
+          },
+        ]}
+      />
+
       <p className="text-center text-[11px] text-muted-foreground">
         Last updated {new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
       </p>
@@ -191,7 +220,7 @@ function TodayPanel() {
 }
 
 function WeekPanel() {
-  const { forecast, selected } = useApp();
+  const { forecast, selected, locationPermission } = useApp();
   if (!forecast) return null;
   const week = buildSevenDayList(forecast.daily);
   return (
@@ -204,6 +233,35 @@ function WeekPanel() {
           <VerifiedBadge sources={forecast.sources} />
         </div>
       </section>
+
+      <SourceStatus
+        sources={[
+          {
+            sourceName: forecast.sources.length > 1 ? "Forecast APIs" : forecast.sources[0] ?? "Forecast API",
+            status: "success",
+            lastUpdated: forecast.updatedAt,
+            message: forecast.sources.length > 1
+              ? `Weekly forecast loaded successfully from ${forecast.sources.join(" and ")}.`
+              : "Weekly forecast loaded successfully.",
+          },
+          {
+            sourceName: "Device Time",
+            status: "success",
+            message: "Using device time to start the 7-day list with today.",
+          },
+          {
+            sourceName: "Location Services",
+            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
+            message: selected.current
+              ? locationPermission === "granted"
+                ? "Current device location loaded successfully."
+                : "Using saved current location because live permission is not granted."
+              : "Using selected saved location.",
+            isFallbackData: selected.current && locationPermission !== "granted",
+          },
+        ]}
+      />
+
       <div className="space-y-2">
         {week.map((d, i) => (
           <WeatherCard key={d.date} day={d} isToday={i === 0} />
@@ -214,7 +272,7 @@ function WeekPanel() {
 }
 
 function RadarPanel() {
-  const { selected } = useApp();
+  const { selected, locationPermission } = useApp();
 
   return (
     <>
@@ -239,6 +297,26 @@ function RadarPanel() {
           Radar updates automatically for your selected location.
         </p>
       </section>
+
+      <SourceStatus
+        sources={[
+          {
+            sourceName: "Windy Radar",
+            status: "success",
+            message: "Radar imagery loaded successfully.",
+          },
+          {
+            sourceName: "Location Services",
+            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
+            message: selected.current
+              ? locationPermission === "granted"
+                ? "Current device location loaded successfully."
+                : "Using saved current location because live permission is not granted."
+              : "Using selected saved location.",
+            isFallbackData: selected.current && locationPermission !== "granted",
+          },
+        ]}
+      />
 
       <RadarMap
         lat={selected.lat}
