@@ -1,6 +1,6 @@
-// Multi-source weather fetching with confidence scoring.
-// Primary: Open-Meteo (no key). Secondary: National Weather Service (US only, no key).
-// We compare today's high/low/rain to compute a confidence rating.
+// Multi-source weather fetching with metric-level source transparency.
+// Primary display source: Open-Meteo. Fallback display source: Pirate Weather.
+// Metric values are averaged when multiple providers return usable data.
 
 import type {
   ForecastBundle,
@@ -13,6 +13,15 @@ import type {
 } from "./types";
 import { fetchPirateWeather, type PirateNormalized } from "./pirate.functions";
 import { forecastDateLocalKey, localDateKey } from "./weatherUtils";
+import {
+  buildMetric,
+  buildSourceDetails,
+  CONFLICT_THRESHOLDS,
+} from "./sourceTransparency";
+
+const OPEN_METEO = "Open-Meteo";
+const PIRATE = "Pirate Weather";
+const WEATHER_GOV = "Weather.gov";
 
 // ---- Open-Meteo (primary) -------------------------------------------------
 
@@ -44,7 +53,6 @@ async function fetchOpenMeteo(lat: number, lon: number) {
     weatherCode: j.daily.weather_code[i],
   }));
 
-  // Full hourly array for the 7-day window (used for period calculations).
   const fullHourly: HourlyPoint[] = (j.hourly.time as string[]).map((t, i) => ({
     time: t,
     rainChance: j.hourly.precipitation_probability?.[i] ?? 0,
@@ -85,7 +93,6 @@ async function fetchNws(lat: number, lon: number): Promise<NwsSummary | null> {
       shortForecast: string;
     }> = fc?.properties?.periods ?? [];
 
-    // Today: first daytime period high, first nighttime low (next 36h roughly).
     const today = periods[0];
     const dayPeriod = periods.find((p) => p.isDaytime);
     const nightPeriod = periods.find((p) => !p.isDaytime);
@@ -93,7 +100,6 @@ async function fetchNws(lat: number, lon: number): Promise<NwsSummary | null> {
     const lowF = nightPeriod?.temperature;
     const rainPct = (dayPeriod ?? today)?.probabilityOfPrecipitation?.value ?? undefined;
 
-    // Severe alerts.
     let alerts: string[] = [];
     try {
       const aRes = await fetch(
@@ -115,54 +121,37 @@ async function fetchNws(lat: number, lon: number): Promise<NwsSummary | null> {
   }
 }
 
-// ---- Confidence calculation -----------------------------------------------
-
-function scoreConfidence(
-  primary: { high: number; low: number; rain: number },
-  secondary: { highF?: number; lowF?: number; rainPct?: number } | null,
-): Confidence {
-  if (!secondary) return "moderate"; // only one source available
-  const tempDiff = Math.max(
-    secondary.highF !== undefined ? Math.abs(primary.high - secondary.highF) : 0,
-    secondary.lowF !== undefined ? Math.abs(primary.low - secondary.lowF) : 0,
-  );
-  const rainDiff =
-    secondary.rainPct !== undefined ? Math.abs(primary.rain - secondary.rainPct) : 0;
-  if (tempDiff <= 3 && rainDiff <= 15) return "high";
-  if (tempDiff <= 7 && rainDiff <= 30) return "moderate";
-  return "low";
-}
-
 // ---- Public API -----------------------------------------------------------
 
 export async function fetchForecast(lat: number, lon: number): Promise<ForecastBundle> {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  // Run all providers in parallel; Pirate Weather and NWS are tolerated to fail.
   const [omRes, nws, pirateRes] = await Promise.all([
     fetchOpenMeteo(lat, lon).catch(() => null),
     fetchNws(lat, lon),
     fetchPirateWeather({ data: { lat, lon, tz } }).catch(() => null as PirateNormalized | null),
   ]);
 
-  // Open-Meteo is primary; if it fails, fall back to Pirate Weather as primary.
-  let current: CurrentWeather;
-  let daily: DailyForecast[];
-  let fullHourly: HourlyPoint[];
-  const sources: string[] = [];
+  const pirateHasCurrent = !!pirateRes?.current;
+  const pirateHasDaily = !!pirateRes?.daily?.length;
+  const pirateHasHourly = !!pirateRes?.hourly?.length;
+  const pirateUsable = pirateHasCurrent || pirateHasDaily || pirateHasHourly;
+
+  let currentBase: CurrentWeather;
+  let dailyBase: DailyForecast[];
+  let fullHourlyBase: HourlyPoint[];
 
   if (omRes) {
-    current = omRes.current;
-    daily = omRes.daily;
-    fullHourly = omRes.fullHourly;
-    sources.push("Open-Meteo");
+    currentBase = omRes.current;
+    dailyBase = omRes.daily;
+    fullHourlyBase = omRes.fullHourly;
   } else if (pirateRes && pirateRes.current && pirateRes.daily.length) {
-    current = {
+    currentBase = {
       temp: pirateRes.current.temp,
       feelsLike: pirateRes.current.feelsLike,
       weatherCode: pirateRes.current.weatherCode,
       isDay: pirateRes.current.isDay,
     };
-    daily = pirateRes.daily.map((d) => ({
+    dailyBase = pirateRes.daily.map((d) => ({
       date: d.date,
       high: d.high,
       low: d.low,
@@ -170,7 +159,7 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
       rainChance: d.rainChance,
       weatherCode: 1,
     }));
-    fullHourly = pirateRes.hourly.map((h) => ({
+    fullHourlyBase = pirateRes.hourly.map((h) => ({
       time: h.time,
       rainChance: h.rainChance,
       temp: h.temp,
@@ -180,46 +169,190 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
   } else {
     throw new Error("All forecast providers failed");
   }
-  if (nws) sources.push("Weather.gov");
-  const pirateUsable =
-    !!pirateRes && (pirateRes.daily.length > 0 || pirateRes.hourly.length > 0);
-  if (pirateUsable && omRes) sources.push("Pirate Weather");
 
-  // Confidence: compare today's high/low/rain across whatever providers responded.
-  const todayBase = daily[0];
-  const todayPirate = pirateRes?.daily[0];
-  const confidence: Confidence = computeConfidence(
-    { high: todayBase.high, low: todayBase.low, rain: todayBase.rainChance },
-    nws,
-    todayPirate ?? null,
-    sources.length,
-  );
+  const todayBase = dailyBase[0];
+  const todayPirate = pirateRes?.daily?.find(
+    (d) => forecastDateLocalKey(d.date) === forecastDateLocalKey(todayBase.date),
+  ) ?? pirateRes?.daily?.[0];
 
-  // Blend NWS into today's daily when available (US only).
-  const blendedDaily = daily.map((d, i) => {
-    if (i !== 0 || !nws) return d;
+  const currentTempMetric = buildMetric({
+    metricName: "Current temperature",
+    conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    values: {
+      [OPEN_METEO]: omRes?.current.temp,
+      [PIRATE]: pirateRes?.current?.temp,
+    },
+  });
+  const feelsLikeMetric = buildMetric({
+    metricName: "Feels-like temperature",
+    conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    values: {
+      [OPEN_METEO]: omRes?.current.feelsLike,
+      [PIRATE]: pirateRes?.current?.feelsLike,
+    },
+  });
+  const dailyHighMetric = buildMetric({
+    metricName: "Daily high",
+    conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    values: {
+      [OPEN_METEO]: todayBase.high,
+      [PIRATE]: todayPirate?.high,
+      [WEATHER_GOV]: nws?.highF,
+    },
+  });
+  const dailyLowMetric = buildMetric({
+    metricName: "Daily low",
+    conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    values: {
+      [OPEN_METEO]: todayBase.low,
+      [PIRATE]: todayPirate?.low,
+      [WEATHER_GOV]: nws?.lowF,
+    },
+  });
+  const rainChanceMetric = buildMetric({
+    metricName: "Rain chance",
+    conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+    values: {
+      [OPEN_METEO]: todayBase.rainChance,
+      [PIRATE]: todayPirate?.rainChance,
+      [WEATHER_GOV]: nws?.rainPct,
+    },
+  });
+
+  const mergedHourly = mergeHourly(fullHourlyBase, pirateRes?.hourly ?? [], !!omRes);
+  const firstHourly = mergedHourly.find((h) => new Date(h.time).getTime() >= Date.now() - 30 * 60 * 1000);
+  const hourlyOpen = omRes?.fullHourly.find((h) => h.time === firstHourly?.time);
+  const hourlyPirate = pirateRes?.hourly.find((h) => h.time === firstHourly?.time);
+
+  const hourlyTempMetric = buildMetric({
+    metricName: "Hourly temperature",
+    conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    values: {
+      [OPEN_METEO]: hourlyOpen?.temp,
+      [PIRATE]: hourlyPirate?.temp,
+    },
+  });
+  const hourlyFeelsLikeMetric = buildMetric({
+    metricName: "Hourly feels-like temperature",
+    conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    values: {
+      [OPEN_METEO]: hourlyOpen?.feelsLike,
+      [PIRATE]: hourlyPirate?.feelsLike,
+    },
+  });
+  const hourlyRainChanceMetric = buildMetric({
+    metricName: "Hourly precipitation chance",
+    conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+    values: {
+      [OPEN_METEO]: hourlyOpen?.rainChance,
+      [PIRATE]: hourlyPirate?.rainChance,
+    },
+  });
+  const uvIndexMetric = buildMetric({
+    metricName: "UV index",
+    conflictThreshold: CONFLICT_THRESHOLDS.uvIndex,
+    values: {
+      [OPEN_METEO]: firstHourly?.uvIndex,
+      [PIRATE]: hourlyPirate?.uvIndex,
+    },
+  });
+  const alertsMetric = buildMetric({
+    metricName: "Weather alerts",
+    conflictThreshold: 1,
+    values: {
+      [WEATHER_GOV]: nws ? (nws.alerts?.length ?? 0) : undefined,
+    },
+  });
+
+  const sourceDetails = buildSourceDetails({
+    providersResponded: [
+      ...(omRes ? [OPEN_METEO] : []),
+      ...(pirateUsable ? [PIRATE] : []),
+      ...(nws ? [WEATHER_GOV] : []),
+    ],
+    metrics: {
+      currentTemp: currentTempMetric,
+      feelsLike: feelsLikeMetric,
+      dailyHigh: dailyHighMetric,
+      dailyLow: dailyLowMetric,
+      rainChance: rainChanceMetric,
+      hourlyTemperature: hourlyTempMetric,
+      hourlyFeelsLike: hourlyFeelsLikeMetric,
+      hourlyPrecipitationChance: hourlyRainChanceMetric,
+      uvIndex: uvIndexMetric,
+      weatherAlerts: alertsMetric,
+    },
+    alertsSource: nws ? WEATHER_GOV : undefined,
+  });
+
+  const current: CurrentWeather = {
+    ...currentBase,
+    temp: currentTempMetric.value ?? currentBase.temp,
+    feelsLike: feelsLikeMetric.value ?? currentBase.feelsLike,
+  };
+
+  const blendedDaily = dailyBase.map((d, i) => {
+    const pirateDay = pirateRes?.daily?.find(
+      (p) => forecastDateLocalKey(p.date) === forecastDateLocalKey(d.date),
+    );
+    const highMetric = buildMetric({
+      metricName: "Daily high",
+      conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+      values: {
+        [OPEN_METEO]: omRes ? d.high : undefined,
+        [PIRATE]: pirateDay?.high,
+        [WEATHER_GOV]: i === 0 ? nws?.highF : undefined,
+      },
+    });
+    const lowMetric = buildMetric({
+      metricName: "Daily low",
+      conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+      values: {
+        [OPEN_METEO]: omRes ? d.low : undefined,
+        [PIRATE]: pirateDay?.low,
+        [WEATHER_GOV]: i === 0 ? nws?.lowF : undefined,
+      },
+    });
+    const feelsHighMetric = buildMetric({
+      metricName: "Feels-like daily high",
+      conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+      values: {
+        [OPEN_METEO]: omRes ? d.feelsHigh : undefined,
+        [PIRATE]: pirateDay?.feelsHigh,
+      },
+    });
+    const rainMetric = buildMetric({
+      metricName: "Rain chance",
+      conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+      values: {
+        [OPEN_METEO]: omRes ? d.rainChance : undefined,
+        [PIRATE]: pirateDay?.rainChance,
+        [WEATHER_GOV]: i === 0 ? nws?.rainPct : undefined,
+      },
+    });
+
     return {
       ...d,
-      high: nws.highF !== undefined ? Math.round((d.high + nws.highF) / 2) : d.high,
-      low: nws.lowF !== undefined ? Math.round((d.low + nws.lowF) / 2) : d.low,
-      rainChance:
-        nws.rainPct !== undefined ? Math.round((d.rainChance + nws.rainPct) / 2) : d.rainChance,
+      high: highMetric.value ?? d.high,
+      low: lowMetric.value ?? d.low,
+      feelsHigh: feelsHighMetric.value ?? d.feelsHigh,
+      rainChance: rainMetric.value ?? d.rainChance,
     };
   });
 
-  // Fill any missing-day hourly gaps from Pirate Weather, then compute periods.
-  const mergedHourly = mergeHourly(fullHourly, pirateRes?.hourly ?? []);
   const dailyWithPeriods = blendedDaily.map((d) => ({
     ...d,
     periods: computePeriods(d.date, mergedHourly),
   }));
 
-  // Trim hourly to next ~24h for the existing HourlyForecast component.
   const now = Date.now();
   const hourly = mergedHourly.filter((h) => {
     const t = new Date(h.time).getTime();
     return t >= now - 30 * 60 * 1000 && t <= now + 24 * 3600 * 1000;
   });
+
+  const sources = sourceDetails.providersResponded;
+  const confidence = legacyConfidence(sourceDetails.varyingMetrics.length, sources.length);
 
   return {
     current,
@@ -229,53 +362,66 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
     alerts: nws?.alerts ?? [],
     confidence,
     sources,
+    sourceDetails,
     updatedAt: Date.now(),
   };
 }
 
-// ---- Confidence (multi-provider) -----------------------------------------
-
-function computeConfidence(
-  primary: { high: number; low: number; rain: number },
-  nws: NwsSummary | null,
-  pirate: { high: number; low: number; rainChance: number } | null,
-  sourceCount: number,
-): Confidence {
+function legacyConfidence(varyingMetricCount: number, sourceCount: number): Confidence {
   if (sourceCount < 2) return "moderate";
-  const tempDiffs: number[] = [];
-  const rainDiffs: number[] = [];
-  if (nws) {
-    if (nws.highF !== undefined) tempDiffs.push(Math.abs(primary.high - nws.highF));
-    if (nws.lowF !== undefined) tempDiffs.push(Math.abs(primary.low - nws.lowF));
-    if (nws.rainPct !== undefined) rainDiffs.push(Math.abs(primary.rain - nws.rainPct));
-  }
-  if (pirate) {
-    tempDiffs.push(Math.abs(primary.high - pirate.high));
-    tempDiffs.push(Math.abs(primary.low - pirate.low));
-    rainDiffs.push(Math.abs(primary.rain - pirate.rainChance));
-  }
-  const tempDiff = tempDiffs.length ? Math.max(...tempDiffs) : 0;
-  const rainDiff = rainDiffs.length ? Math.max(...rainDiffs) : 0;
-  if (tempDiff <= 3 && rainDiff <= 15) return "high";
-  if (tempDiff <= 7 && rainDiff <= 30) return "moderate";
-  return "low";
+  return varyingMetricCount > 0 ? "low" : "high";
 }
 
 // ---- Hourly merge + period computation -----------------------------------
 
-function mergeHourly(primary: HourlyPoint[], pirate: PirateNormalized["hourly"]): HourlyPoint[] {
+function mergeHourly(
+  primary: HourlyPoint[],
+  pirate: PirateNormalized["hourly"],
+  primaryIsOpenMeteo: boolean,
+): HourlyPoint[] {
   if (!pirate.length) return primary;
   const byTime = new Map<string, HourlyPoint>();
   for (const h of primary) byTime.set(h.time, h);
   for (const p of pirate) {
     const existing = byTime.get(p.time);
     if (existing) {
-      // Fill missing fields only.
-      if (existing.temp === undefined && p.temp !== undefined) existing.temp = p.temp;
-      if (existing.feelsLike === undefined && p.feelsLike !== undefined)
-        existing.feelsLike = p.feelsLike;
-      if (existing.uvIndex === undefined && p.uvIndex !== undefined)
-        existing.uvIndex = p.uvIndex;
+      const tempMetric = buildMetric({
+        metricName: "Hourly temperature",
+        conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+        values: {
+          [OPEN_METEO]: primaryIsOpenMeteo ? existing.temp : undefined,
+          [PIRATE]: p.temp,
+        },
+      });
+      const feelsMetric = buildMetric({
+        metricName: "Hourly feels-like temperature",
+        conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+        values: {
+          [OPEN_METEO]: primaryIsOpenMeteo ? existing.feelsLike : undefined,
+          [PIRATE]: p.feelsLike,
+        },
+      });
+      const rainMetric = buildMetric({
+        metricName: "Hourly precipitation chance",
+        conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+        values: {
+          [OPEN_METEO]: primaryIsOpenMeteo ? existing.rainChance : undefined,
+          [PIRATE]: p.rainChance,
+        },
+      });
+      const uvMetric = buildMetric({
+        metricName: "UV index",
+        conflictThreshold: CONFLICT_THRESHOLDS.uvIndex,
+        values: {
+          [OPEN_METEO]: primaryIsOpenMeteo ? existing.uvIndex : undefined,
+          [PIRATE]: p.uvIndex,
+        },
+      });
+
+      existing.temp = tempMetric.value ?? existing.temp ?? p.temp;
+      existing.feelsLike = feelsMetric.value ?? existing.feelsLike ?? p.feelsLike;
+      existing.rainChance = rainMetric.value ?? existing.rainChance ?? p.rainChance;
+      existing.uvIndex = uvMetric.value ?? existing.uvIndex ?? p.uvIndex;
     } else {
       byTime.set(p.time, {
         time: p.time,
@@ -315,7 +461,6 @@ function computePeriods(dateValue: string, hourly: HourlyPoint[]): DayPeriods {
     const hr = d.getHours();
     const p = periodForHour(hr);
     if (!p) continue;
-    // For "today", only include hours from now onward.
     if (isToday && hr < nowH) continue;
     buckets[p].push(h);
   }
@@ -347,9 +492,9 @@ function summarize(points: HourlyPoint[]): PeriodSummary {
 // ---- Geocoding (Open-Meteo) -----------------------------------------------
 
 export interface GeocodeResult {
-  name: string;        // formatted "City, Region"
+  name: string;
   city: string;
-  region?: string;     // state / admin1
+  region?: string;
   country?: string;
   lat: number;
   lon: number;
