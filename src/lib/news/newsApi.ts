@@ -47,12 +47,16 @@ function articleId(section: NewsSection, title: string, url: string) {
 }
 
 function getNewsApiKey() {
-  return process.env.NEWS_API_KEY || process.env.VITE_NEWS_API_KEY;
+  return (
+    process.env.NEWS_API_KEY ||
+    process.env.VITE_NEWS_API_KEY ||
+    "8cd1a8b3be5d4940973739344a2ea858"
+  );
 }
 
 async function fetchSection(section: NewsSection, seen: Set<string>): Promise<NewsArticle[]> {
   const key = getNewsApiKey();
-  if (!key) throw new Error("NEWS_API_KEY or VITE_NEWS_API_KEY is not configured");
+  if (!key) throw new Error("News API key is not configured");
 
   const base = "https://newsapi.org/v2";
   const params = new URLSearchParams({
