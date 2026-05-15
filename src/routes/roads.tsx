@@ -3,6 +3,7 @@ import { PageShell } from "@/components/wb/PageShell";
 import { useApp } from "@/lib/weather/AppContext";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
+import { SourceStatus } from "@/components/wb/SourceStatus";
 import { fetchTomTomTraffic } from "@/lib/traffic/tomtomTraffic";
 import { trafficEmoji, trafficLabel } from "@/lib/traffic/types";
 import { useEffect, useState } from "react";
@@ -29,7 +30,7 @@ function RoadsPage() {
 }
 
 function Content() {
-  const { forecast, selected } = useApp();
+  const { forecast, selected, locationPermission } = useApp();
   const [liveTraffic, setLiveTraffic] = useState<LiveTrafficBriefing | null>(null);
   const [trafficLoading, setTrafficLoading] = useState(true);
 
@@ -113,6 +114,37 @@ function Content() {
           </span>
         </div>
       </section>
+
+      <SourceStatus
+        sources={[
+          {
+            sourceName: "TomTom Traffic API",
+            status: liveTraffic ? "success" : trafficLoading ? "warning" : "error",
+            message: liveTraffic
+              ? "Live traffic loaded successfully."
+              : trafficLoading
+                ? "Checking live traffic data."
+                : "Could not fetch live traffic, using estimated traffic from weather and time of day.",
+            isFallbackData: !trafficLoading && !liveTraffic,
+          },
+          {
+            sourceName: forecast.sources.length > 1 ? "Weather APIs" : forecast.sources[0] ?? "Weather API",
+            status: "success",
+            lastUpdated: forecast.updatedAt,
+            message: "Weather data loaded successfully for road condition estimates.",
+          },
+          {
+            sourceName: "Location Services",
+            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
+            message: selected.current
+              ? locationPermission === "granted"
+                ? "Current device location loaded successfully."
+                : "Using saved current location because live permission is not granted."
+              : "Using selected saved location.",
+            isFallbackData: selected.current && locationPermission !== "granted",
+          },
+        ]}
+      />
 
       <CollapsibleCard
         id="roads:traffic-status"
