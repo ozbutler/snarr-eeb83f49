@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/wb/PageShell";
 import { NewsSection } from "@/components/wb/NewsSection";
 import { SourceStatus } from "@/components/wb/SourceStatus";
+import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { fetchNewsBriefing, refreshNewsBriefing, type NewsBundle } from "@/lib/news/rssNews";
 
 export const Route = createFileRoute("/news")({
@@ -121,12 +122,6 @@ function NewsPage() {
         )}
       </section>
 
-      <SourceStatus
-        title="News Sources"
-        sources={rssSourceRows}
-        compact={false}
-      />
-
       <NewsSection title="Top Stories" icon="📰" articles={data.sections.top} sources={data.sectionSources.top} />
       <NewsSection title="U.S." icon="🇺🇸" articles={data.sections.us} sources={data.sectionSources.us} />
       <NewsSection title="World" icon="🌎" articles={data.sections.world} sources={data.sectionSources.world} />
@@ -137,6 +132,19 @@ function NewsPage() {
       <p className="text-center text-[11px] text-muted-foreground">
         Updated {new Date(data.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
       </p>
+
+      <CollapsibleCard
+        id="news:sources"
+        title="News Sources"
+        icon="🔎"
+        summary={`${data.rssSources.length} RSS source${data.rssSources.length === 1 ? "" : "s"}`}
+      >
+        <SourceStatus
+          title="RSS News Sources"
+          sources={rssSourceRows}
+          compact={false}
+        />
+      </CollapsibleCard>
     </PageShell>
   );
 }
