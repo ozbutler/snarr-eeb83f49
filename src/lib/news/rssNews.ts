@@ -31,6 +31,7 @@ export interface NewsBundle {
     storyCount: number;
   };
   rssSources: RssSourceStatus[];
+  sectionSources: Record<NewsSection, string[]>;
 }
 
 type CacheEntry = {
@@ -42,6 +43,7 @@ type SectionResult = {
   articles: NewsArticle[];
   error?: string;
   sourceStatuses: RssSourceStatus[];
+  sourcesUsed: string[];
 };
 
 type FeedResult = {
@@ -55,6 +57,7 @@ type RssFeedConfig = {
 };
 
 const CACHE_TTL_MS = 15 * 60 * 1000;
+const MAX_STORY_AGE_MS = 72 * 60 * 60 * 1000;
 let cache: CacheEntry | null = null;
 
 const SECTION_LABELS: Record<NewsSection, string> = {
@@ -70,22 +73,29 @@ const RSS_FEEDS: Record<NewsSection, RssFeedConfig[]> = {
   top: [
     { source: "BBC News", url: "https://feeds.bbci.co.uk/news/rss.xml" },
     { source: "NPR", url: "https://feeds.npr.org/1001/rss.xml" },
+    { source: "AP News", url: "https://apnews.com/hub/ap-top-news?output=rss" },
   ],
   us: [
     { source: "NPR", url: "https://feeds.npr.org/1003/rss.xml" },
     { source: "BBC News", url: "https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml" },
+    { source: "AP News", url: "https://apnews.com/hub/us-news?output=rss" },
   ],
   world: [
     { source: "BBC News", url: "https://feeds.bbci.co.uk/news/world/rss.xml" },
     { source: "NPR", url: "https://feeds.npr.org/1004/rss.xml" },
+    { source: "AP News", url: "https://apnews.com/hub/world-news?output=rss" },
   ],
   technology: [
     { source: "BBC News", url: "https://feeds.bbci.co.uk/news/technology/rss.xml" },
     { source: "NPR", url: "https://feeds.npr.org/1019/rss.xml" },
+    { source: "TechCrunch", url: "https://techcrunch.com/feed/" },
+    { source: "Ars Technica", url: "https://feeds.arstechnica.com/arstechnica/index" },
+    { source: "The Verge", url: "https://www.theverge.com/rss/index.xml" },
   ],
   business: [
     { source: "BBC News", url: "https://feeds.bbci.co.uk/news/business/rss.xml" },
     { source: "NPR", url: "https://feeds.npr.org/1006/rss.xml" },
+    { source: "AP News", url: "https://apnews.com/hub/business?output=rss" },
   ],
   sports: [
     { source: "ESPN", url: "https://www.espn.com/espn/rss/news" },
@@ -123,10 +133,26 @@ function articleId(section: NewsSection, title: string, url: string) {
   return `${section}:${title}:${url}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 120);
 }
 
+function normalizeHeadline(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\s[-|–—:]\s.*$/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\b(bbc|npr|espn|ap|reuters|techcrunch|ars technica|the verge)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isFreshArticle(article: NewsArticle) {
+  const publishedAt = new Date(article.publishedAt).getTime();
+  if (Number.isNaN(publishedAt)) return true;
+  return Date.now() - publishedAt <= MAX_STORY_AGE_MS;
+}
+
 function pushUniqueArticles(target: NewsArticle[], articles: NewsArticle[], seen: Set<string>, limit = 6) {
   for (const article of articles) {
-    const duplicateKey = `${article.headline.toLowerCase()}|${article.url}`;
-    if (seen.has(duplicateKey)) continue;
+    const duplicateKey = normalizeHeadline(article.headline);
+    if (!duplicateKey || seen.has(duplicateKey)) continue;
     seen.add(duplicateKey);
     target.push(article);
     if (target.length >= limit) break;
@@ -188,7 +214,7 @@ async function fetchRssFeed(section: NewsSection, feed: RssFeedConfig): Promise<
     }
 
     const xml = await res.text();
-    const items = Array.from(xml.matchAll(/<item[\s\S]*?<\/item>/gi)).slice(0, 10);
+    const items = Array.from(xml.matchAll(/<item[\s\S]*?<\/item>/gi)).slice(0, 12);
 
     const articles = items.map((match, index) => {
       const itemXml = match[0];
@@ -238,7 +264,8 @@ async function fetchRssFeed(section: NewsSection, feed: RssFeedConfig): Promise<
 
 async function fetchRssSection(section: NewsSection, seen: Set<string>): Promise<SectionResult> {
   const feeds = RSS_FEEDS[section];
-  const articles: NewsArticle[] = [];
+  const freshArticles: NewsArticle[] = [];
+  const backupArticles: NewsArticle[] = [];
   const errors: string[] = [];
   const sourceStatuses: RssSourceStatus[] = [];
 
@@ -246,24 +273,30 @@ async function fetchRssSection(section: NewsSection, seen: Set<string>): Promise
     const result = await fetchRssFeed(section, feed);
     sourceStatuses.push(result.status);
     if (result.status.status === "error") errors.push(result.status.message);
-    pushUniqueArticles(articles, result.articles, seen, 6);
-    if (articles.length >= 6) break;
+    pushUniqueArticles(freshArticles, result.articles.filter(isFreshArticle), seen, 6);
+    pushUniqueArticles(backupArticles, result.articles, seen, 6);
+    if (freshArticles.length >= 6) break;
   }
+
+  const articles = freshArticles.length ? freshArticles : backupArticles.slice(0, 3);
+  const sourcesUsed = Array.from(new Set(articles.map((article) => article.source)));
 
   return {
     articles,
     sourceStatuses,
+    sourcesUsed,
     error: articles.length ? undefined : errors[0],
   };
 }
 
-export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async (): Promise<NewsBundle> => {
-  if (cache && cache.expiresAt > Date.now()) return cache.data;
-
+async function buildNewsBundle(): Promise<NewsBundle> {
   const sectionIds: NewsSection[] = ["top", "us", "world", "technology", "business", "sports"];
   const sections = Object.fromEntries(
     sectionIds.map((section) => [section, [] as NewsArticle[]]),
   ) as Record<NewsSection, NewsArticle[]>;
+  const sectionSources = Object.fromEntries(
+    sectionIds.map((section) => [section, [] as string[]]),
+  ) as Record<NewsSection, string[]>;
 
   const seen = new Set<string>();
   const errors: string[] = [];
@@ -277,6 +310,7 @@ export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async
     if (result.status === "fulfilled") {
       const [section, sectionResult] = result.value;
       sections[section] = sectionResult.articles;
+      sectionSources[section] = sectionResult.sourcesUsed;
       sourceStatuses.push(...sectionResult.sourceStatuses);
       if (sectionResult.error) errors.push(`${SECTION_LABELS[section]}: ${sectionResult.error}`);
     } else {
@@ -287,10 +321,11 @@ export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async
   const storyCount = Object.values(sections).reduce((total, articles) => total + articles.length, 0);
   const rssSources = mergeSourceStatuses(sourceStatuses);
 
-  const data: NewsBundle = {
+  return {
     sections,
     updatedAt: Date.now(),
     rssSources,
+    sectionSources,
     sourceStatus: storyCount > 0
       ? {
           status: errors.length ? "warning" : "success",
@@ -305,7 +340,22 @@ export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async
           storyCount: 0,
         },
   };
+}
 
+export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async (): Promise<NewsBundle> => {
+  if (cache && cache.expiresAt > Date.now()) return cache.data;
+
+  const data = await buildNewsBundle();
+  cache = {
+    data,
+    expiresAt: Date.now() + CACHE_TTL_MS,
+  };
+
+  return data;
+});
+
+export const refreshNewsBriefing = createServerFn({ method: "POST" }).handler(async (): Promise<NewsBundle> => {
+  const data = await buildNewsBundle();
   cache = {
     data,
     expiresAt: Date.now() + CACHE_TTL_MS,
