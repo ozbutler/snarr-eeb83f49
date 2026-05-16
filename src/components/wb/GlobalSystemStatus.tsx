@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useApp } from "@/lib/weather/AppContext";
 import { SourceStatus, type SourceStatusItem, type SourceStatusState } from "./SourceStatus";
-import { fetchNewsBriefing } from "@/lib/news/newsApi";
+import { refreshNewsBriefing } from "@/lib/news/rssNews";
 import { fetchTomTomTraffic } from "@/lib/traffic/tomtomTraffic";
 
 type OverallStatus = "operational" | "partial" | "major";
@@ -97,7 +97,7 @@ export function GlobalSystemStatus() {
         refresh();
         result = {
           status: "warning",
-          message: "Weather refresh requested. The forecast will update when the API responds.",
+          message: "Weather refresh requested. The forecast will update when the source responds.",
           lastUpdated: Date.now(),
         };
       } else if (key === "traffic") {
@@ -105,30 +105,31 @@ export function GlobalSystemStatus() {
         result = liveTraffic
           ? {
               status: "success",
-              message: "Traffic API responded successfully.",
+              message: "Traffic source responded successfully.",
               lastUpdated: liveTraffic.updatedAt ?? Date.now(),
             }
           : {
               status: "error",
-              message: "Traffic API did not return live data. The app should use weather-based traffic estimates.",
+              message: "Traffic source did not return live data. The app should use weather-based traffic estimates.",
               lastUpdated: Date.now(),
               isFallbackData: true,
             };
       } else if (key === "news") {
-        const news = await fetchNewsBriefing();
+        const news = await refreshNewsBriefing();
         const storyCount = news
           ? Object.values(news.sections).reduce((total, articles) => total + articles.length, 0)
           : 0;
 
         result = storyCount > 0
           ? {
-              status: "success",
-              message: `News API responded successfully with ${storyCount} stor${storyCount === 1 ? "y" : "ies"}.`,
+              status: news.sourceStatus.status,
+              message: `RSS news feeds loaded successfully with ${storyCount} stor${storyCount === 1 ? "y" : "ies"}.`,
               lastUpdated: news.updatedAt ?? Date.now(),
+              isFallbackData: news.sourceStatus.status === "warning",
             }
           : {
               status: "error",
-              message: "News API responded but did not return stories. Check the API key, quota, or source response.",
+              message: "RSS news feeds returned zero usable stories.",
               lastUpdated: news?.updatedAt ?? Date.now(),
               isFallbackData: true,
             };
@@ -178,12 +179,12 @@ export function GlobalSystemStatus() {
   }
 
   const sources = useMemo<SourceStatusItem[]>(() => {
-    const weatherSources = forecast?.sources?.length ? forecast.sources : ["Weather API"];
+    const weatherSources = forecast?.sources?.length ? forecast.sources : ["Weather Source"];
     const liveLocationWarning = selected.current && locationPermission !== "granted";
 
     const baseSources: Record<SourceKey, SourceStatusItem> = {
       weather: {
-        sourceName: weatherSources.length > 1 ? "Weather APIs" : weatherSources[0],
+        sourceName: weatherSources.length > 1 ? "Weather Sources" : weatherSources[0],
         status: error ? "error" : loading && !forecast ? "warning" : forecast ? "success" : "warning",
         lastUpdated: forecast?.updatedAt,
         message: error
@@ -191,7 +192,7 @@ export function GlobalSystemStatus() {
           : loading && !forecast
             ? "Weather data is still loading."
             : forecast
-              ? "Weather API operational."
+              ? "Weather source operational."
               : "Waiting for weather data.",
         isFallbackData: false,
       },
@@ -201,15 +202,15 @@ export function GlobalSystemStatus() {
         message: "Radar source is available on the radar page.",
       },
       traffic: {
-        sourceName: "Traffic API",
+        sourceName: "Traffic Source",
         status: "warning",
         message: "Tap to check TomTom traffic now. If it fails, the app uses weather-based road estimates.",
         isFallbackData: false,
       },
       news: {
-        sourceName: "News API",
+        sourceName: "RSS News Sources",
         status: "warning",
-        message: "Tap to check the News API now instead of waiting until the News page opens.",
+        message: "Tap to refresh RSS news feeds.",
         isFallbackData: false,
       },
       location: {
