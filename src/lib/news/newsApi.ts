@@ -51,7 +51,7 @@ const SECTION_LABELS: Record<NewsSection, string> = {
   sports: "Sports",
 };
 
-const RSS_FALLBACKS: Record<NewsSection, RssFeedConfig[]> = {
+const RSS_FEEDS: Record<NewsSection, RssFeedConfig[]> = {
   top: [
     { source: "BBC News", url: "https://feeds.bbci.co.uk/news/rss.xml" },
     { source: "NPR", url: "https://feeds.npr.org/1001/rss.xml" },
@@ -108,10 +108,6 @@ function articleId(section: NewsSection, title: string, url: string) {
   return `${section}:${title}:${url}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 120);
 }
 
-function getNewsApiKey() {
-  return process.env.NEWS_API_KEY;
-}
-
 function pushUniqueArticles(target: NewsArticle[], articles: NewsArticle[], seen: Set<string>, limit = 6) {
   for (const article of articles) {
     const duplicateKey = `${article.headline.toLowerCase()}|${article.url}`;
@@ -126,7 +122,7 @@ async function fetchRssFeed(section: NewsSection, feed: RssFeedConfig): Promise<
   try {
     const res = await fetch(feed.url, {
       headers: {
-        "User-Agent": "Snarr/1.0 RSS fallback reader",
+        "User-Agent": "Snarr/1.0 RSS reader",
       },
     });
 
@@ -166,8 +162,8 @@ async function fetchRssFeed(section: NewsSection, feed: RssFeedConfig): Promise<
   }
 }
 
-async function fetchRssFallbackSection(section: NewsSection, seen: Set<string>): Promise<SectionResult> {
-  const feeds = RSS_FALLBACKS[section];
+async function fetchRssSection(section: NewsSection, seen: Set<string>): Promise<SectionResult> {
+  const feeds = RSS_FEEDS[section];
   const articles: NewsArticle[] = [];
   const errors: string[] = [];
 
@@ -184,95 +180,9 @@ async function fetchRssFallbackSection(section: NewsSection, seen: Set<string>):
   };
 }
 
-async function fetchNewsApiSection(section: NewsSection, seen: Set<string>, key: string): Promise<SectionResult> {
-  const base = "https://newsapi.org/v2";
-  const params = new URLSearchParams({
-    apiKey: key,
-    pageSize: "8",
-    language: "en",
-  });
-
-  let endpoint = `${base}/top-headlines`;
-
-  if (section === "top") {
-    params.set("country", "us");
-  } else if (section === "us") {
-    params.set("country", "us");
-  } else if (section === "technology") {
-    params.set("country", "us");
-    params.set("category", "technology");
-  } else if (section === "business") {
-    params.set("country", "us");
-    params.set("category", "business");
-  } else if (section === "sports") {
-    params.set("country", "us");
-    params.set("category", "sports");
-  } else {
-    endpoint = `${base}/everything`;
-    params.set("q", "world OR global OR international");
-    params.set("sortBy", "publishedAt");
-  }
-
-  try {
-    const res = await fetch(`${endpoint}?${params.toString()}`);
-
-    if (!res.ok) {
-      let message = `News API returned HTTP ${res.status}`;
-
-      try {
-        const errorJson = await res.json();
-        if (errorJson?.message) message = String(errorJson.message);
-      } catch {}
-
-      return { articles: [], error: message };
-    }
-
-    const json = await res.json();
-
-    if (json?.status === "error") {
-      return {
-        articles: [],
-        error: json?.message ? String(json.message) : "News API returned an error response.",
-      };
-    }
-
-    const articles = Array.isArray(json?.articles) ? json.articles : [];
-
-    const out: NewsArticle[] = [];
-    for (const article of articles) {
-      const headline = String(article?.title ?? "").trim();
-      const url = String(article?.url ?? "").trim();
-      if (!headline || !url || headline === "[Removed]") continue;
-
-      const duplicateKey = `${headline.toLowerCase()}|${url}`;
-      if (seen.has(duplicateKey)) continue;
-      seen.add(duplicateKey);
-
-      out.push({
-        id: articleId(section, headline, url),
-        headline,
-        summary: cleanSummary(article?.description, article?.content),
-        source: article?.source?.name || SECTION_LABELS[section],
-        publishedAt: article?.publishedAt || new Date().toISOString(),
-        url,
-        imageUrl: article?.urlToImage || undefined,
-        section,
-      });
-    }
-
-    return { articles: out.slice(0, 6) };
-  } catch (e) {
-    return {
-      articles: [],
-      error: e instanceof Error ? e.message : "News API request failed.",
-    };
-  }
-}
-
 export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async (): Promise<NewsBundle> => {
   if (cache && cache.expiresAt > Date.now()) return cache.data;
 
-  const key = getNewsApiKey();
   const sectionIds: NewsSection[] = ["top", "us", "world", "technology", "business", "sports"];
   const sections = Object.fromEntries(
     sectionIds.map((section) => [section, [] as NewsArticle[]]),
@@ -280,57 +190,36 @@ export const fetchNewsBriefing = createServerFn({ method: "GET" }).handler(async
 
   const seen = new Set<string>();
   const errors: string[] = [];
-  const usedFallbackSections: NewsSection[] = [];
 
-  if (key) {
-    const results = await Promise.allSettled(
-      sectionIds.map(async (section) => [section, await fetchNewsApiSection(section, seen, key)] as const),
-    );
+  const results = await Promise.allSettled(
+    sectionIds.map(async (section) => [section, await fetchRssSection(section, seen)] as const),
+  );
 
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        const [section, sectionResult] = result.value;
-        sections[section] = sectionResult.articles;
-        if (sectionResult.error) errors.push(`${SECTION_LABELS[section]}: ${sectionResult.error}`);
-      } else {
-        errors.push(result.reason instanceof Error ? result.reason.message : "Unknown news fetch error.");
-      }
-    }
-  } else {
-    errors.push("NEWS_API_KEY is missing, using free RSS fallback feeds.");
-  }
-
-  const missingSections = sectionIds.filter((section) => sections[section].length === 0);
-  for (const section of missingSections) {
-    const fallbackResult = await fetchRssFallbackSection(section, seen);
-    sections[section] = fallbackResult.articles;
-
-    if (fallbackResult.articles.length) {
-      usedFallbackSections.push(section);
-    } else if (fallbackResult.error) {
-      errors.push(`${SECTION_LABELS[section]} RSS fallback: ${fallbackResult.error}`);
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      const [section, sectionResult] = result.value;
+      sections[section] = sectionResult.articles;
+      if (sectionResult.error) errors.push(`${SECTION_LABELS[section]}: ${sectionResult.error}`);
+    } else {
+      errors.push(result.reason instanceof Error ? result.reason.message : "Unknown RSS fetch error.");
     }
   }
 
   const storyCount = Object.values(sections).reduce((total, articles) => total + articles.length, 0);
-  const fallbackText = usedFallbackSections.length
-    ? ` RSS fallback used for ${usedFallbackSections.map((section) => SECTION_LABELS[section]).join(", ")}.`
-    : "";
-
   const data: NewsBundle = {
     sections,
     updatedAt: Date.now(),
     sourceStatus: storyCount > 0
       ? {
-          status: errors.length || usedFallbackSections.length ? "warning" : "success",
-          message: errors.length || usedFallbackSections.length
-            ? `News loaded with ${storyCount} stories.${fallbackText}`
-            : `News API loaded successfully with ${storyCount} stories.`,
+          status: errors.length ? "warning" : "success",
+          message: errors.length
+            ? `RSS news loaded with ${storyCount} stories, but some feeds failed.`
+            : `RSS news loaded successfully with ${storyCount} stories.`,
           storyCount,
         }
       : {
           status: "error",
-          message: errors[0] ?? "News API and RSS fallbacks returned zero usable stories.",
+          message: errors[0] ?? "RSS news feeds returned zero usable stories.",
           storyCount: 0,
         },
   };
