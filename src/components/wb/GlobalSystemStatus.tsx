@@ -117,12 +117,23 @@ export function GlobalSystemStatus() {
     try {
       let result: CheckResult;
 
-      if (["weatherSummary", "openMeteo", "weatherGov", "pirateWeather", "weatherTrafficFallback"].includes(key)) {
+      if (key === "weatherSummary") {
         refresh();
         result = {
           status: "warning",
-          message: "Weather refresh requested. This source will update when the forecast responds.",
+          message: "Weather refresh requested. Sources will update when the forecast responds.",
           lastUpdated: Date.now(),
+        };
+      } else if (["openMeteo", "weatherGov", "pirateWeather", "weatherTrafficFallback"].includes(key)) {
+        result = {
+          status: forecast ? "success" : loading ? "warning" : "error",
+          message: forecast
+            ? "Checked current forecast state. No extra network request needed."
+            : loading
+              ? "Weather data is still loading."
+              : "No current forecast state is available.",
+          lastUpdated: forecast?.updatedAt ?? Date.now(),
+          isFallbackData: !forecast,
         };
       } else if (key === "metNorway") {
         result = await checkMetNorwayForecast({ data: { lat: selected.lat, lon: selected.lon } });
