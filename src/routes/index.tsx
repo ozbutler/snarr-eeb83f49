@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageShell } from "@/components/wb/PageShell";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
@@ -37,13 +37,24 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
+type SeverityLevel = "critical" | "important" | "normal" | "background";
+type SummaryState = "calm" | "moderate" | "disruptive" | "severe";
 type BriefingContext = NonNullable<ReturnType<typeof buildBriefingContext>>;
 
 type PriorityAlert = {
-  level: "warning" | "info";
+  level: "critical" | "warning" | "info";
   icon: string;
   title: string;
   detail: string;
+  score: number;
+};
+
+type SectionConfig = {
+  id: string;
+  priorityScore: number;
+  severityLevel: SeverityLevel;
+  isCompact?: boolean;
+  component: ReactNode;
 };
 
 function Index() {
@@ -82,8 +93,28 @@ function Index() {
     [forecast, news],
   );
 
+  const adaptiveSections = useMemo(
+    () => briefing ? buildAdaptiveSections(briefing, units) : [],
+    [briefing, units],
+  );
+
+  useEffect(() => {
+    if (!briefing) return;
+
+    console.log("Homepage severity:", briefing.severity.totalScore);
+    console.log("Homepage mood:", briefing.severity.summaryState);
+    console.log("Sorted homepage sections:", adaptiveSections.map((section) => ({
+      id: section.id,
+      priorityScore: section.priorityScore,
+      severityLevel: section.severityLevel,
+      isCompact: section.isCompact,
+    })));
+  }, [adaptiveSections, briefing]);
+
   return (
     <PageShell>
+      {briefing?.priorityAlerts.length ? <PriorityAlertsCard alerts={briefing.priorityAlerts} /> : null}
+
       <MorningBriefingHero
         briefing={briefing}
         newsError={newsError}
@@ -93,15 +124,9 @@ function Index() {
         units={units}
       />
 
-      {briefing && (
-        <>
-          <PriorityAlertsCard alerts={briefing.priorityAlerts} />
-          <TodayTimelineCard briefing={briefing} units={units} />
-          <CommuteCard briefing={briefing} />
-          <TopStoryCard briefing={briefing} />
-          <NextDaysCard />
-        </>
-      )}
+      {briefing && adaptiveSections.map((section) => (
+        <div key={section.id}>{section.component}</div>
+      ))}
     </PageShell>
   );
 }
@@ -115,11 +140,13 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
   const rain = rainWindow(hourly);
   const roads = buildRoadBriefing(today.weatherCode, today.rainChance);
   const articles = firstArticles(news, 5);
+  const severity = calculateBriefingSeverity({ today, roads, topStory: articles[0] });
   const priorityAlerts = buildPriorityAlerts({
     today,
     rain,
     roads,
     topStory: articles[0],
+    severity,
   });
 
   return {
@@ -133,6 +160,7 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
     roads,
     articles,
     priorityAlerts,
+    severity,
     dateLine: new Date().toLocaleDateString(undefined, {
       weekday: "long",
       month: "long",
@@ -144,8 +172,110 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
       roadLevel: roads.level,
       rainWindowText: rain,
       outfit: outfit.main,
+      summaryState: severity.summaryState,
     }),
   };
+}
+
+function calculateBriefingSeverity({
+  today,
+  roads,
+  topStory,
+}: {
+  today: ForecastData["today"];
+  roads: ReturnType<typeof buildRoadBriefing>;
+  topStory?: NewsArticle;
+}) {
+  let weatherScore = 0;
+  let commuteScore = 0;
+  let newsScore = 0;
+
+  if (today.rainChance >= 85) weatherScore += 4;
+  else if (today.rainChance >= 70) weatherScore += 3;
+  else if (today.rainChance >= 50) weatherScore += 2;
+
+  if (today.high >= 95 || today.low <= 20) weatherScore += 3;
+  else if (today.high >= 88 || today.low <= 32) weatherScore += 2;
+
+  if (roads.level === "heavy") commuteScore += 4;
+  else if (roads.level === "moderate") commuteScore += 2;
+
+  const storyText = `${topStory?.headline ?? ""} ${topStory?.summary ?? ""}`.toLowerCase();
+  if (/breaking|emergency|evacuation|shooting|crash|closure|severe|warning|storm|flood|fire|transit|power outage/.test(storyText)) {
+    newsScore += 4;
+  } else if (topStory) {
+    newsScore += 1;
+  }
+
+  const totalScore = weatherScore + commuteScore + newsScore;
+  const summaryState: SummaryState = totalScore >= 9
+    ? "severe"
+    : totalScore >= 6
+      ? "disruptive"
+      : totalScore >= 3
+        ? "moderate"
+        : "calm";
+
+  return {
+    totalScore,
+    weatherScore,
+    commuteScore,
+    newsScore,
+    summaryState,
+    summaryText: getSummaryText(summaryState),
+  };
+}
+
+function getSummaryText(state: SummaryState) {
+  if (state === "severe") return "Multiple major issues may affect your day.";
+  if (state === "disruptive") return "Today could be disruptive.";
+  if (state === "moderate") return "A few things may affect your day.";
+  return "Today looks calm overall.";
+}
+
+function getSeverityLevel(score: number): SeverityLevel {
+  if (score >= 5) return "critical";
+  if (score >= 3) return "important";
+  if (score >= 1) return "normal";
+  return "background";
+}
+
+function buildAdaptiveSections(briefing: BriefingContext, units: string): SectionConfig[] {
+  const { severity, articles } = briefing;
+  const sections: SectionConfig[] = [
+    {
+      id: "today",
+      priorityScore: Math.max(2, severity.weatherScore + 1),
+      severityLevel: getSeverityLevel(severity.weatherScore),
+      component: <TodayTimelineCard briefing={briefing} units={units} compact={severity.summaryState === "calm"} />,
+    },
+    {
+      id: "commute",
+      priorityScore: severity.commuteScore,
+      severityLevel: getSeverityLevel(severity.commuteScore),
+      isCompact: severity.commuteScore < 2,
+      component: <CommuteCard briefing={briefing} compact={severity.commuteScore < 2} />,
+    },
+    {
+      id: "top-story",
+      priorityScore: articles.length ? severity.newsScore + 1 : 0,
+      severityLevel: getSeverityLevel(severity.newsScore),
+      isCompact: severity.newsScore < 3,
+      component: <TopStoryCard briefing={briefing} compact={severity.newsScore < 3} />,
+    },
+    {
+      id: "next-days",
+      priorityScore: severity.summaryState === "calm" ? 2 : 0,
+      severityLevel: "background",
+      isCompact: severity.summaryState !== "calm",
+      component: <NextDaysCard compact={severity.summaryState !== "calm"} />,
+    },
+  ];
+
+  return sections
+    .filter((section) => section.id !== "top-story" || articles.length > 0)
+    .filter((section) => section.priorityScore > 0 || section.id === "next-days")
+    .sort((a, b) => b.priorityScore - a.priorityScore);
 }
 
 function buildPriorityAlerts({
@@ -153,42 +283,63 @@ function buildPriorityAlerts({
   rain,
   roads,
   topStory,
+  severity,
 }: {
   today: ForecastData["today"];
   rain: string | null;
   roads: ReturnType<typeof buildRoadBriefing>;
   topStory?: NewsArticle;
+  severity: ReturnType<typeof calculateBriefingSeverity>;
 }): PriorityAlert[] {
   const alerts: PriorityAlert[] = [];
 
-  if (today.rainChance >= 70) {
+  if (today.rainChance >= 85) {
+    alerts.push({
+      level: "critical",
+      icon: "🌧️",
+      title: "Heavy rain likely",
+      detail: rain ? `Rain most likely ${rain}.` : "Rain is very likely today.",
+      score: 5,
+    });
+  } else if (today.rainChance >= 70) {
     alerts.push({
       level: "warning",
       icon: "🌧️",
-      title: "Heavy rain expected",
+      title: "Rain may affect your day",
       detail: rain ? `Rain most likely ${rain}.` : "Rain is likely today.",
+      score: 3,
     });
   }
 
   if (roads.level === "heavy") {
     alerts.push({
-      level: "warning",
+      level: "critical",
       icon: "🚗",
       title: "Commute may be slower",
       detail: roads.recommendation,
+      score: 4,
     });
-  }
-
-  if (topStory) {
+  } else if (roads.level === "moderate" && severity.summaryState !== "calm") {
     alerts.push({
-      level: "info",
-      icon: "📰",
-      title: "Top story",
-      detail: topStory.headline,
+      level: "warning",
+      icon: "🚗",
+      title: "Watch your commute",
+      detail: roads.recommendation,
+      score: 2,
     });
   }
 
-  return alerts.slice(0, 3);
+  if (severity.newsScore >= 4 && topStory) {
+    alerts.push({
+      level: "warning",
+      icon: "📰",
+      title: "Important local story",
+      detail: topStory.headline,
+      score: severity.newsScore,
+    });
+  }
+
+  return alerts.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
 function greeting() {
@@ -243,11 +394,11 @@ function MorningBriefingHero({
     );
   }
 
-  const { current, today, weatherDescription, articles, dateLine, recommendation } = briefing;
+  const { current, today, weatherDescription, articles, dateLine, recommendation, severity } = briefing;
 
   return (
     <section
-      className="relative overflow-hidden rounded-3xl p-5 text-foreground shadow-[var(--shadow-soft)]"
+      className={`relative overflow-hidden rounded-3xl p-5 text-foreground shadow-[var(--shadow-soft)] ${severity.summaryState === "severe" || severity.summaryState === "disruptive" ? "ring-1 ring-amber-500/25" : ""}`}
       style={{ background: "var(--gradient-sky)" }}
     >
       <div className="flex items-start justify-between gap-3">
@@ -273,7 +424,7 @@ function MorningBriefingHero({
 
       <div className="mt-4 rounded-2xl bg-background/45 p-3 backdrop-blur-sm">
         <div className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">
-          What you need to know
+          {severity.summaryText}
         </div>
         <p className="mt-1 text-[14px] leading-relaxed text-foreground/90">
           {recommendation}
@@ -298,9 +449,9 @@ function MorningBriefingHero({
           detail={newsRefreshing ? "Updating" : "Ready"}
         />
         <BriefingMetricCard
-          label="Refresh"
-          value="News"
-          detail="Tap below"
+          label="Priority"
+          value={capitalize(severity.summaryState)}
+          detail={`${severity.totalScore} score`}
         />
       </div>
 
@@ -324,7 +475,7 @@ function PriorityAlertsCard({ alerts }: { alerts: PriorityAlert[] }) {
   if (!alerts.length) return null;
 
   return (
-    <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
+    <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)] ring-1 ring-amber-500/20">
       <div className="flex items-center gap-2 px-1">
         <span>⚠️</span>
         <h2 className="text-[13px] font-semibold text-foreground">Priority Alerts</h2>
@@ -334,7 +485,7 @@ function PriorityAlertsCard({ alerts }: { alerts: PriorityAlert[] }) {
         {alerts.map((alert) => (
           <div
             key={`${alert.title}-${alert.detail}`}
-            className={`rounded-xl px-3 py-2 ${alert.level === "warning" ? "bg-amber-500/10" : "bg-secondary/45"}`}
+            className={`rounded-xl px-3 py-2 ${alert.level === "critical" ? "bg-destructive/10" : alert.level === "warning" ? "bg-amber-500/10" : "bg-secondary/45"}`}
           >
             <div className="flex items-start gap-2">
               <span className="text-base">{alert.icon}</span>
@@ -350,8 +501,8 @@ function PriorityAlertsCard({ alerts }: { alerts: PriorityAlert[] }) {
   );
 }
 
-function TodayTimelineCard({ briefing, units }: { briefing: BriefingContext; units: string }) {
-  const points = buildTodayTimeline(briefing, units);
+function TodayTimelineCard({ briefing, units, compact }: { briefing: BriefingContext; units: string; compact?: boolean }) {
+  const points = buildTodayTimeline(briefing, units, compact);
 
   return (
     <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
@@ -372,10 +523,9 @@ function TodayTimelineCard({ briefing, units }: { briefing: BriefingContext; uni
   );
 }
 
-function buildTodayTimeline(briefing: BriefingContext, units: string) {
+function buildTodayTimeline(briefing: BriefingContext, units: string, compact?: boolean) {
   const { current, today, rain, roads, outfit } = briefing;
-
-  return [
+  const timeline = [
     {
       label: "Morning",
       icon: "☀️",
@@ -397,9 +547,11 @@ function buildTodayTimeline(briefing: BriefingContext, units: string) {
       text: `Low near ${fmtTemp(today.low, units)}. ${outfit.main}.`,
     },
   ];
+
+  return compact ? timeline.slice(0, 3) : timeline;
 }
 
-function CommuteCard({ briefing }: { briefing: BriefingContext }) {
+function CommuteCard({ briefing, compact }: { briefing: BriefingContext; compact?: boolean }) {
   const { roads } = briefing;
 
   return (
@@ -410,12 +562,14 @@ function CommuteCard({ briefing }: { briefing: BriefingContext }) {
       summary={`${capitalize(roads.level)} traffic · ${roads.roadLabel}`}
     >
       <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">{roads.summary}</p>
+        <p className="text-sm text-muted-foreground">{compact ? roads.recommendation : roads.summary}</p>
 
-        <div className="rounded-xl bg-secondary/45 px-3 py-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Recommendation</div>
-          <div className="mt-1 text-sm text-foreground/85">{roads.recommendation}</div>
-        </div>
+        {!compact && (
+          <div className="rounded-xl bg-secondary/45 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Recommendation</div>
+            <div className="mt-1 text-sm text-foreground/85">{roads.recommendation}</div>
+          </div>
+        )}
       </div>
 
       <div className="mt-2 text-right">
@@ -425,7 +579,7 @@ function CommuteCard({ briefing }: { briefing: BriefingContext }) {
   );
 }
 
-function TopStoryCard({ briefing }: { briefing: BriefingContext }) {
+function TopStoryCard({ briefing, compact }: { briefing: BriefingContext; compact?: boolean }) {
   const story = briefing.articles[0];
 
   if (!story) return null;
@@ -433,7 +587,7 @@ function TopStoryCard({ briefing }: { briefing: BriefingContext }) {
   return (
     <CollapsibleCard
       id="briefing:top-story"
-      title="Top Story"
+      title={compact ? "Top Story" : "Important Story"}
       icon="📰"
       summary={story.source}
     >
@@ -447,9 +601,11 @@ function TopStoryCard({ briefing }: { briefing: BriefingContext }) {
           {story.headline}
         </div>
 
-        <div className="mt-2 text-sm text-muted-foreground">
-          {story.summary || "Open the full article to read more."}
-        </div>
+        {!compact && (
+          <div className="mt-2 text-sm text-muted-foreground">
+            {story.summary || "Open the full article to read more."}
+          </div>
+        )}
       </a>
 
       <div className="mt-2 text-right">
@@ -486,13 +642,19 @@ function buildRecommendation({
   roadLevel,
   rainWindowText,
   outfit,
+  summaryState,
 }: {
   rainChance: number;
   high: number;
   roadLevel: string;
   rainWindowText: string | null;
   outfit: string;
+  summaryState: SummaryState;
 }) {
+  if (summaryState === "severe") {
+    return "Multiple issues may affect your day. Check the priority alerts before heading out.";
+  }
+
   if (rainChance >= 60) {
     return `Bring rain gear today. ${rainWindowText ? `Rain is most likely ${rainWindowText}. ` : "Rain is likely at some point today. "}${outfit} is the safest clothing choice.`;
   }
@@ -516,18 +678,18 @@ function capitalize(value: string) {
   return value.length ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 }
 
-function NextDaysCard() {
+function NextDaysCard({ compact }: { compact?: boolean }) {
   const { forecast, units } = useApp();
   if (!forecast) return null;
-  const days = forecast.daily.slice(1, 4);
+  const days = forecast.daily.slice(1, compact ? 3 : 4);
 
   return (
     <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-[13px] font-semibold text-foreground">Next 3 Days</h2>
+        <h2 className="text-[13px] font-semibold text-foreground">Next {compact ? "2" : "3"} Days</h2>
         <Link to="/weather" search={{ tab: "week" }} className="text-[11px] text-primary font-medium">Full week →</Link>
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-1.5">
+      <div className={`mt-2 grid gap-1.5 ${compact ? "grid-cols-2" : "grid-cols-3"}`}>
         {days.map((d) => {
           const desc = describeCode(d.weatherCode);
           const day = parseForecastDateLocal(d.date).toLocaleDateString(undefined, { weekday: "short" });
