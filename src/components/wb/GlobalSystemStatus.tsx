@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { useLocation } from "@tanstack/react-router";
 import { useApp } from "@/lib/weather/AppContext";
 import { SourceStatus, type SourceStatusItem, type SourceStatusState } from "./SourceStatus";
-import { refreshNewsBriefing } from "@/lib/news/rssNews";
+import { refreshNewsBriefing, type RssSourceStatus } from "@/lib/news/rssNews";
 import { fetchTomTomTraffic } from "@/lib/traffic/tomtomTraffic";
 import {
   checkMetNorwayForecast,
@@ -38,6 +38,11 @@ type CheckResult = {
 
 type CheckState = Partial<Record<SourceKey, CheckResult>>;
 type RefreshingState = Partial<Record<SourceKey, boolean>>;
+
+type NewsStatusEventDetail = {
+  rssSources?: RssSourceStatus[];
+  refreshing?: boolean;
+};
 
 const AUTO_CHECK_KEYS: Record<PageGroup, SourceKey[]> = {
   home: ["roadSummary", "newsSummary"],
@@ -100,6 +105,11 @@ function getPillLabel(group: PageGroup) {
   return "Status";
 }
 
+function newsSourceMessage(source: RssSourceStatus) {
+  const storyText = source.storyCount === 1 ? "1 story" : `${source.storyCount} stories`;
+  return source.storyCount > 0 ? `${source.message} ${storyText} available.` : source.message;
+}
+
 export function GlobalSystemStatus() {
   const {
     forecast,
@@ -115,6 +125,8 @@ export function GlobalSystemStatus() {
   const [open, setOpen] = useState(false);
   const [checks, setChecks] = useState<CheckState>({});
   const [refreshing, setRefreshing] = useState<RefreshingState>({});
+  const [newsSourceStatuses, setNewsSourceStatuses] = useState<RssSourceStatus[]>([]);
+  const [newsPageRefreshing, setNewsPageRefreshing] = useState(false);
   const autoCheckRunRef = useRef<Set<string>>(new Set());
 
   async function runCheck(key: SourceKey) {
@@ -164,12 +176,25 @@ export function GlobalSystemStatus() {
       } else if (key === "traffic511") {
         result = await checkPublicTrafficFeeds({ data: { lat: selected.lat, lon: selected.lon } });
       } else if (key === "rssNews" || key === "newsSummary") {
-        const news = await refreshNewsBriefing();
+        const news = await refreshNewsBriefing({
+          data: {
+            label: selected.label,
+            lat: selected.lat,
+            lon: selected.lon,
+          },
+        });
         const storyCount = Object.values(news.sections).reduce((total, articles) => total + articles.length, 0);
+        const activeSources = news.rssSources.filter((source) => source.status === "success" && source.storyCount > 0);
+        const failedSources = news.rssSources.filter((source) => source.status === "error");
+
+        setNewsSourceStatuses(news.rssSources);
+        console.log("News sources used:", activeSources.map((source) => source.sourceName));
+        console.log("News sources failed:", failedSources.map((source) => source.sourceName));
+
         result = storyCount > 0
           ? {
               status: news.sourceStatus.status,
-              message: `RSS news feeds loaded with ${storyCount} stor${storyCount === 1 ? "y" : "ies"}.`,
+              message: `${activeSources.length} active RSS news source${activeSources.length === 1 ? "" : "s"} loaded with ${storyCount} stor${storyCount === 1 ? "y" : "ies"}.`,
               lastUpdated: news.updatedAt ?? Date.now(),
               isFallbackData: news.sourceStatus.status === "warning",
             }
@@ -223,6 +248,23 @@ export function GlobalSystemStatus() {
   }
 
   useEffect(() => {
+    function handleNewsStatusEvent(event: Event) {
+      const detail = (event as CustomEvent<NewsStatusEventDetail>).detail;
+      const rssSources = Array.isArray(detail?.rssSources) ? detail.rssSources : [];
+      const activeSources = rssSources.filter((source) => source.status === "success" && source.storyCount > 0);
+      const failedSources = rssSources.filter((source) => source.status === "error");
+
+      setNewsSourceStatuses(rssSources);
+      setNewsPageRefreshing(Boolean(detail?.refreshing));
+      console.log("News sources used:", activeSources.map((source) => source.sourceName));
+      console.log("News sources failed:", failedSources.map((source) => source.sourceName));
+    }
+
+    window.addEventListener("snarr:news-source-status", handleNewsStatusEvent);
+    return () => window.removeEventListener("snarr:news-source-status", handleNewsStatusEvent);
+  }, []);
+
+  useEffect(() => {
     const keys = AUTO_CHECK_KEYS[pageGroup];
     if (!keys.length) return;
 
@@ -239,6 +281,34 @@ export function GlobalSystemStatus() {
     const responded = forecast?.sources ?? [];
     const hasSource = (name: string) => responded.includes(name);
     const liveLocationWarning = selected.current && locationPermission !== "granted";
+    const newsRefreshing = Boolean(refreshing.rssNews || newsPageRefreshing);
+
+    if (pageGroup === "news") {
+      if (!newsSourceStatuses.length) {
+        const checked = checks.rssNews;
+        return [
+          {
+            sourceName: "News Sources",
+            status: checked?.status ?? "warning",
+            lastUpdated: checked?.lastUpdated,
+            message: checked?.message ?? "No active news sources are available right now.",
+            isFallbackData: checked?.isFallbackData ?? true,
+            isRefreshing: newsRefreshing,
+            onRefresh: () => runCheck("rssNews"),
+          },
+        ];
+      }
+
+      return newsSourceStatuses.map((source) => ({
+        sourceName: source.sourceName,
+        status: source.status,
+        lastUpdated: source.lastUpdated,
+        message: newsSourceMessage(source),
+        isFallbackData: source.status !== "success" || source.storyCount === 0,
+        isRefreshing: newsRefreshing,
+        onRefresh: () => runCheck("rssNews"),
+      }));
+    }
 
     const locationSource: SourceStatusItem = {
       sourceName: "Location Services",
@@ -379,7 +449,7 @@ export function GlobalSystemStatus() {
         onRefresh: () => runCheck(key),
       };
     });
-  }, [checks, error, forecast, loading, locationPermission, pageGroup, refreshing, selected.current, selected.lat, selected.lon]);
+  }, [checks, error, forecast, loading, locationPermission, newsPageRefreshing, newsSourceStatuses, pageGroup, refreshing, selected.current, selected.label, selected.lat, selected.lon]);
 
   const overall = getOverallStatus(sources);
   const meta = getStatusMeta(overall);
