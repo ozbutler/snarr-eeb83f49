@@ -54,7 +54,7 @@ export function buildSourceDetails({
   alertsSource?: string;
 }): ForecastSourceDetails {
   return {
-    providersResponded: Array.from(new Set(providersResponded)),
+    providersResponded: Array.from(new Set(providersResponded)).filter(Boolean),
     metrics,
     averagedMetrics: Object.values(metrics)
       .filter((metric) => metric.sourceCount > 1)
@@ -67,19 +67,6 @@ export function buildSourceDetails({
 }
 
 export function getSourceBadge(details?: ForecastSourceDetails): string {
-  if (!details) return '1 source';
-
-  if (details.varyingMetrics.length > 0) {
-    return '⚖️ Sources vary';
-  }
-
-  const maxSources = Math.max(
-    0,
-    ...Object.values(details.metrics).map((metric) => metric.sourceCount),
-  );
-
-  if (maxSources >= 3) return `🔎 ${maxSources} sources`;
-  if (maxSources >= 2) return '📊 Multiple sources';
-
-  return '1 source';
+  const sourceCount = details?.providersResponded?.length ?? 1;
+  return `${sourceCount} source${sourceCount === 1 ? '' : 's'}`;
 }
