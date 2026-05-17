@@ -39,20 +39,56 @@ function maxLevel(a: LiveTrafficLevel, b: LiveTrafficLevel): LiveTrafficLevel {
   return rank[b] > rank[a] ? b : a;
 }
 
-function recommendation(level: LiveTrafficLevel, closure: boolean) {
-  if (closure || level === "severe") return "Avoid unnecessary driving.";
-  if (level === "heavy") return "Expect delays.";
-  if (level === "moderate") return "Leave a few minutes early.";
+function incidentLevel(incidents: TrafficIncident[]): LiveTrafficLevel {
+  return incidents.reduce((acc, incident) => maxLevel(acc, incident.severity), "light" as LiveTrafficLevel);
+}
+
+function recommendation({
+  congestionLevel,
+  incidents,
+  closure,
+}: {
+  congestionLevel: LiveTrafficLevel;
+  incidents: TrafficIncident[];
+  closure: boolean;
+}) {
+  const severeIncidents = incidents.filter((incident) => incident.severity === "severe").length;
+
+  if (closure) return "Avoid unnecessary driving.";
+  if (congestionLevel === "severe") return "Avoid unnecessary driving if possible.";
+  if (congestionLevel === "heavy") return "Expect delays.";
+  if (severeIncidents > 0) return "Use caution. Severe incidents are nearby, but traffic flow may still be normal.";
+  if (incidents.length >= 5) return "Use caution. Several incidents are nearby.";
+  if (congestionLevel === "moderate") return "Leave a few minutes early.";
   return "Normal drive expected.";
 }
 
-function summary(level: LiveTrafficLevel, incidents: TrafficIncident[]) {
+function summary({
+  congestionLevel,
+  congestionPercent,
+  incidents,
+  closure,
+}: {
+  congestionLevel: LiveTrafficLevel;
+  congestionPercent: number;
+  incidents: TrafficIncident[];
+  closure: boolean;
+}) {
   const count = incidents.length;
   const incidentText = count ? `${count} nearby incident${count === 1 ? "" : "s"}` : "no major nearby incidents";
-  if (level === "severe") return `Severe traffic nearby with ${incidentText}.`;
-  if (level === "heavy") return `Heavy traffic nearby with ${incidentText}.`;
-  if (level === "moderate") return `Moderate traffic nearby with ${incidentText}.`;
-  return `Light traffic nearby with ${incidentText}.`;
+  const highestIncidentLevel = incidentLevel(incidents);
+
+  if (closure) return `Road closure reported with ${incidentText}.`;
+
+  if (congestionPercent <= 10 && highestIncidentLevel !== "light") {
+    const incidentLabel = highestIncidentLevel[0].toUpperCase() + highestIncidentLevel.slice(1);
+    return `${incidentLabel} incidents nearby, but traffic speeds look normal.`;
+  }
+
+  if (congestionLevel === "severe") return `Severe congestion nearby with ${incidentText}.`;
+  if (congestionLevel === "heavy") return `Heavy congestion nearby with ${incidentText}.`;
+  if (congestionLevel === "moderate") return `Moderate congestion nearby with ${incidentText}.`;
+  return `Light congestion nearby with ${incidentText}.`;
 }
 
 async function fetchFlow(lat: number, lon: number, key: string) {
@@ -115,9 +151,10 @@ async function requestTomTomTraffic(lat: number, lon: number, key: string, cache
     }
 
     const closure = Boolean(flow?.roadClosure || incidents.some((i) => i.isClosure));
-    const flowLevel = levelFromCongestion(flow?.congestionPercent ?? 0);
-    const level = incidents.reduce((acc, incident) => maxLevel(acc, incident.severity), closure ? "severe" : flowLevel);
-    const congestionPercent = flow?.congestionPercent ?? (level === "light" ? 0 : level === "moderate" ? 30 : level === "heavy" ? 55 : 80);
+    const congestionPercent = flow?.congestionPercent ?? 0;
+    const congestionLevel = levelFromCongestion(congestionPercent);
+    const highestIncidentLevel = incidentLevel(incidents);
+    const level = closure ? "severe" : maxLevel(congestionLevel, highestIncidentLevel);
 
     const briefing: LiveTrafficBriefing = {
       provider: "TomTom",
@@ -128,8 +165,8 @@ async function requestTomTomTraffic(lat: number, lon: number, key: string, cache
       freeFlowSpeedMph: flow?.freeFlowSpeedMph,
       roadClosureAware: closure,
       incidents,
-      summary: summary(level, incidents),
-      recommendation: recommendation(level, closure),
+      summary: summary({ congestionLevel, congestionPercent, incidents, closure }),
+      recommendation: recommendation({ congestionLevel, incidents, closure }),
       updatedAt: Date.now(),
     };
 
