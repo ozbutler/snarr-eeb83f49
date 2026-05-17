@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageShell } from "@/components/wb/PageShell";
 import { NewsSection } from "@/components/wb/NewsSection";
-import { SourceStatus } from "@/components/wb/SourceStatus";
-import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { fetchNewsBriefing, refreshNewsBriefing, type NewsBundle } from "@/lib/news/rssNews";
 import { useApp } from "@/lib/weather/AppContext";
 
@@ -36,6 +34,19 @@ export const Route = createFileRoute("/news")({
   component: NewsPage,
 });
 
+function dispatchNewsSourceStatus(data: NewsBundle | null, refreshing: boolean) {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent("snarr:news-source-status", {
+      detail: {
+        rssSources: data?.rssSources ?? [],
+        refreshing,
+      },
+    }),
+  );
+}
+
 function NewsPage() {
   const initialData = Route.useLoaderData();
   const { selected } = useApp();
@@ -48,6 +59,7 @@ function NewsPage() {
     if (refreshing) return;
 
     setRefreshing(true);
+    dispatchNewsSourceStatus(data, true);
     setRefreshError(null);
 
     try {
@@ -60,8 +72,10 @@ function NewsPage() {
       });
 
       setData(nextData);
+      dispatchNewsSourceStatus(nextData, false);
     } catch (e) {
       setRefreshError(e instanceof Error ? e.message : "Could not refresh RSS news feeds.");
+      dispatchNewsSourceStatus(data, false);
     } finally {
       setRefreshing(false);
     }
@@ -70,6 +84,10 @@ function NewsPage() {
   useEffect(() => {
     refreshNews();
   }, [selected.id]);
+
+  useEffect(() => {
+    dispatchNewsSourceStatus(data, refreshing);
+  }, [data, refreshing]);
 
   if (!data) {
     return (
@@ -92,17 +110,6 @@ function NewsPage() {
       </PageShell>
     );
   }
-
-  const successfulSources = data.rssSources.filter((source) => source.storyCount > 0);
-
-  const rssSourceRows = data.rssSources.map((source) => ({
-    sourceName: source.sourceName,
-    status: source.status,
-    lastUpdated: source.lastUpdated,
-    message: `${source.message} ${source.storyCount === 1 ? "1 story" : `${source.storyCount} stories`} available.`,
-    isRefreshing: refreshing,
-    onRefresh: refreshNews,
-  }));
 
   return (
     <PageShell>
@@ -155,19 +162,6 @@ function NewsPage() {
       <p className="text-center text-[11px] text-muted-foreground">
         Updated {new Date(data.updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
       </p>
-
-      <CollapsibleCard
-        id="news:sources"
-        title="News Sources"
-        icon="🔎"
-        summary={`${successfulSources.length} active source${successfulSources.length === 1 ? "" : "s"}`}
-      >
-        <SourceStatus
-          title="RSS News Sources"
-          sources={rssSourceRows}
-          compact={false}
-        />
-      </CollapsibleCard>
     </PageShell>
   );
 }
