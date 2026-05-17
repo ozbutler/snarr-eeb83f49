@@ -1,8 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { LiveTrafficBriefing, LiveTrafficLevel, TrafficIncident } from "./types";
 
-let cached: { key: string; until: number; data: LiveTrafficBriefing | null } | null = null;
+type CacheEntry = {
+  until: number;
+  data: LiveTrafficBriefing | null;
+};
+
 const CACHE_MS = 5 * 60 * 1000;
+const trafficCache = new Map<string, CacheEntry>();
+const inFlightTraffic = new Map<string, Promise<LiveTrafficBriefing | null>>();
+
+function trafficCacheKey(lat: number, lon: number) {
+  return `${lat.toFixed(3)},${lon.toFixed(3)}`;
+}
 
 function toMph(kph?: number) {
   return typeof kph === "number" && Number.isFinite(kph)
@@ -92,6 +102,47 @@ async function fetchIncidents(lat: number, lon: number, key: string): Promise<Tr
   });
 }
 
+async function requestTomTomTraffic(lat: number, lon: number, key: string, cacheKey: string) {
+  try {
+    const [flow, incidents] = await Promise.all([
+      fetchFlow(lat, lon, key),
+      fetchIncidents(lat, lon, key),
+    ]);
+
+    if (!flow && incidents.length === 0) {
+      trafficCache.set(cacheKey, { until: Date.now() + CACHE_MS, data: null });
+      return null;
+    }
+
+    const closure = Boolean(flow?.roadClosure || incidents.some((i) => i.isClosure));
+    const flowLevel = levelFromCongestion(flow?.congestionPercent ?? 0);
+    const level = incidents.reduce((acc, incident) => maxLevel(acc, incident.severity), closure ? "severe" : flowLevel);
+    const congestionPercent = flow?.congestionPercent ?? (level === "light" ? 0 : level === "moderate" ? 30 : level === "heavy" ? 55 : 80);
+
+    const briefing: LiveTrafficBriefing = {
+      provider: "TomTom",
+      sourceLabel: "Live traffic from TomTom",
+      level,
+      congestionPercent,
+      currentSpeedMph: flow?.currentSpeedMph,
+      freeFlowSpeedMph: flow?.freeFlowSpeedMph,
+      roadClosureAware: closure,
+      incidents,
+      summary: summary(level, incidents),
+      recommendation: recommendation(level, closure),
+      updatedAt: Date.now(),
+    };
+
+    trafficCache.set(cacheKey, { until: Date.now() + CACHE_MS, data: briefing });
+    return briefing;
+  } catch {
+    trafficCache.set(cacheKey, { until: Date.now() + CACHE_MS, data: null });
+    return null;
+  } finally {
+    inFlightTraffic.delete(cacheKey);
+  }
+}
+
 export const fetchTomTomTraffic = createServerFn({ method: "POST" })
   .inputValidator((d: { lat?: number; lon?: number }) => d)
   .handler(async ({ data }): Promise<LiveTrafficBriefing | null> => {
@@ -100,43 +151,15 @@ export const fetchTomTomTraffic = createServerFn({ method: "POST" })
 
     const lat = Number.isFinite(data.lat) ? Number(data.lat) : 39.9526;
     const lon = Number.isFinite(data.lon) ? Number(data.lon) : -75.1652;
-    const cacheKey = `${lat.toFixed(3)},${lon.toFixed(3)}`;
-    if (cached && cached.key === cacheKey && cached.until > Date.now()) return cached.data;
+    const cacheKey = trafficCacheKey(lat, lon);
+    const cached = trafficCache.get(cacheKey);
 
-    try {
-      const [flow, incidents] = await Promise.all([
-        fetchFlow(lat, lon, key),
-        fetchIncidents(lat, lon, key),
-      ]);
+    if (cached && cached.until > Date.now()) return cached.data;
 
-      if (!flow && incidents.length === 0) {
-        cached = { key: cacheKey, until: Date.now() + CACHE_MS, data: null };
-        return null;
-      }
+    const pending = inFlightTraffic.get(cacheKey);
+    if (pending) return pending;
 
-      const closure = Boolean(flow?.roadClosure || incidents.some((i) => i.isClosure));
-      const flowLevel = levelFromCongestion(flow?.congestionPercent ?? 0);
-      const level = incidents.reduce((acc, incident) => maxLevel(acc, incident.severity), closure ? "severe" : flowLevel);
-      const congestionPercent = flow?.congestionPercent ?? (level === "light" ? 0 : level === "moderate" ? 30 : level === "heavy" ? 55 : 80);
-
-      const briefing: LiveTrafficBriefing = {
-        provider: "TomTom",
-        sourceLabel: "Live traffic from TomTom",
-        level,
-        congestionPercent,
-        currentSpeedMph: flow?.currentSpeedMph,
-        freeFlowSpeedMph: flow?.freeFlowSpeedMph,
-        roadClosureAware: closure,
-        incidents,
-        summary: summary(level, incidents),
-        recommendation: recommendation(level, closure),
-        updatedAt: Date.now(),
-      };
-
-      cached = { key: cacheKey, until: Date.now() + CACHE_MS, data: briefing };
-      return briefing;
-    } catch {
-      cached = { key: cacheKey, until: Date.now() + CACHE_MS, data: null };
-      return null;
-    }
+    const request = requestTomTomTraffic(lat, lon, key, cacheKey);
+    inFlightTraffic.set(cacheKey, request);
+    return request;
   });
