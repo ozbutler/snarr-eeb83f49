@@ -141,6 +141,7 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
   const roads = buildRoadBriefing(today.weatherCode, today.rainChance);
   const articles = firstArticles(news, 5);
   const severity = calculateBriefingSeverity({ today, roads, topStory: articles[0] });
+  const trafficSummary = buildTrafficSummary({ roads, rainChance: today.rainChance, rain });
   const priorityAlerts = buildPriorityAlerts({
     today,
     rain,
@@ -161,6 +162,7 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
     articles,
     priorityAlerts,
     severity,
+    trafficSummary,
     dateLine: new Date().toLocaleDateString(undefined, {
       weekday: "long",
       month: "long",
@@ -175,6 +177,22 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
       summaryState: severity.summaryState,
     }),
   };
+}
+
+function buildTrafficSummary({
+  roads,
+  rainChance,
+  rain,
+}: {
+  roads: ReturnType<typeof buildRoadBriefing>;
+  rainChance: number;
+  rain: string | null;
+}) {
+  if (roads.level === "heavy") return "Expect heavier commute delays today.";
+  if (roads.level === "moderate" && rainChance >= 60) return "Traffic may be slower, and rain could make roads messy.";
+  if (roads.level === "moderate") return "Traffic may be slower than usual.";
+  if (rainChance >= 70) return rain ? `Traffic looks manageable, but rain ${rain} could affect roads.` : "Traffic looks manageable, but rain may affect roads.";
+  return "Traffic looks manageable this morning.";
 }
 
 function calculateBriefingSeverity({
@@ -394,7 +412,7 @@ function MorningBriefingHero({
     );
   }
 
-  const { current, today, weatherDescription, articles, dateLine, recommendation, severity } = briefing;
+  const { current, today, weatherDescription, articles, dateLine, recommendation, severity, trafficSummary } = briefing;
 
   return (
     <section
@@ -428,6 +446,9 @@ function MorningBriefingHero({
         </div>
         <p className="mt-1 text-[14px] leading-relaxed text-foreground/90">
           {recommendation}
+        </p>
+        <p className="mt-2 text-[12px] leading-relaxed text-muted-foreground">
+          🚗 {trafficSummary}
         </p>
       </div>
 
