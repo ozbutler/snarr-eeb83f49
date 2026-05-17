@@ -197,7 +197,7 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
     fetchOpenMeteo(lat, lon).catch(() => null),
     fetchNws(lat, lon),
     fetchPirateWeather({ data: { lat, lon, tz } }).catch(() => null as PirateNormalized | null),
-    fetchMetNorwayForecast(lat, lon).catch(() => null as MetNorwayNormalized | null),
+    fetchMetNorwayForecast({ data: { lat, lon } }).catch(() => null as MetNorwayNormalized | null),
   ]);
 
   const pirateHasCurrent = !!pirateRes?.current;
