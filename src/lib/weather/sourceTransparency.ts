@@ -6,18 +6,50 @@ export const CONFLICT_THRESHOLDS = {
   uvIndex: 3,
 } as const;
 
+type AggregationStrategy = 'auto' | 'average' | 'median' | 'max';
+
 function isUsable(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function average(values: number[]) {
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const midpoint = Math.floor(sorted.length / 2);
+
+  if (sorted.length % 2 === 0) {
+    return (sorted[midpoint - 1] + sorted[midpoint]) / 2;
+  }
+
+  return sorted[midpoint];
+}
+
+function aggregate(values: number[], strategy: AggregationStrategy) {
+  if (!values.length) return null;
+
+  if (strategy === 'max') return Math.max(...values);
+  if (strategy === 'average') return average(values);
+  if (strategy === 'median') return median(values);
+
+  // Auto uses a median once 3+ providers contribute. This keeps one bad
+  // provider from skewing temperature-style metrics while preserving the
+  // existing average behavior when only two providers respond.
+  return values.length >= 3 ? median(values) : average(values);
 }
 
 export function buildMetric({
   metricName,
   values,
   conflictThreshold,
+  aggregation = 'auto',
 }: {
   metricName: string;
   values: Record<string, number | null | undefined>;
   conflictThreshold: number;
+  aggregation?: AggregationStrategy;
 }): WeatherMetric {
   const rawValues = Object.fromEntries(
     Object.entries(values).filter(([, value]) => isUsable(value)),
@@ -25,10 +57,7 @@ export function buildMetric({
 
   const sources = Object.keys(rawValues);
   const numericValues = Object.values(rawValues);
-
-  const value = numericValues.length
-    ? Math.round(numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length)
-    : null;
+  const aggregatedValue = aggregate(numericValues, aggregation);
 
   const spread = numericValues.length > 1
     ? Math.max(...numericValues) - Math.min(...numericValues)
@@ -36,7 +65,7 @@ export function buildMetric({
 
   return {
     metricName,
-    value,
+    value: aggregatedValue === null ? null : Math.round(aggregatedValue),
     sources,
     sourceCount: sources.length,
     hasConflict: spread > conflictThreshold,
