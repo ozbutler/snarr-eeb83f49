@@ -1,6 +1,7 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import { LocationSelector } from "./LocationSelector";
 import { GlobalSystemStatus } from "./GlobalSystemStatus";
+import { NotificationButton } from "./NotificationButton";
 import { useApp } from "@/lib/weather/AppContext";
 import homeLogo from "@/assets/logos/snarr-home-logo.png";
 import weatherLogo from "@/assets/logos/snarr-weather-logo.png";
@@ -50,6 +51,7 @@ export function Header() {
           </div>
           <div className="flex items-center gap-1">
             <GlobalSystemStatus />
+            <NotificationButton />
             <button
               onClick={toggleUnits}
               className="h-8 px-2.5 rounded-full text-[11px] font-medium bg-secondary text-secondary-foreground hover:bg-accent transition-colors"
