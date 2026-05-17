@@ -123,9 +123,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         } catch {}
       },
       {
-        timeout: 10000,
-        enableHighAccuracy: true,
-        maximumAge: 0,
+        timeout: 8000,
+
+        // Lower accuracy is faster and uses less battery for a weather app.
+        // A dedicated precise refresh action can re-enable high accuracy later.
+        enableHighAccuracy: false,
+
+        // Reuse recent location data for up to 5 minutes.
+        maximumAge: 5 * 60 * 1000,
       },
     );
   }, []);
