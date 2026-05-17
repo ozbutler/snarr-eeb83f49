@@ -5,8 +5,12 @@ import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { fetchTomTomTraffic } from "@/lib/traffic/tomtomTraffic";
 import { trafficEmoji, trafficLabel } from "@/lib/traffic/types";
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import type { LiveTrafficBriefing } from "@/lib/traffic/types";
+
+const TrafficMap = lazy(() => import("@/components/wb/TrafficMap").then((module) => ({ default: module.TrafficMap })));
+
+type Tab = "status" | "map";
 
 export const Route = createFileRoute("/roads")({
   head: () => ({
@@ -21,10 +25,92 @@ export const Route = createFileRoute("/roads")({
 });
 
 function RoadsPage() {
+  const [tab, setTab] = useState<Tab>("status");
+
   return (
     <PageShell>
-      <Content />
+      <SubTabs value={tab} onChange={setTab} />
+      {tab === "status" ? <Content /> : <TrafficMapPanel />}
     </PageShell>
+  );
+}
+
+function SubTabs({ value, onChange }: { value: Tab; onChange: (t: Tab) => void }) {
+  const items: { id: Tab; label: string }[] = [
+    { id: "status", label: "Status" },
+    { id: "map", label: "Map" },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-1 rounded-full bg-secondary/60 p-0.5 text-[12px]">
+      {items.map((it) => {
+        const active = value === it.id;
+
+        return (
+          <button
+            key={it.id}
+            type="button"
+            onClick={() => onChange(it.id)}
+            className={
+              "rounded-full py-1.5 font-medium transition-all " +
+              (active
+                ? "bg-card text-foreground shadow-[var(--shadow-card)]"
+                : "text-muted-foreground/80 hover:text-foreground")
+            }
+          >
+            {it.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrafficMapPanel() {
+  const { selected } = useApp();
+
+  return (
+    <>
+      <section
+        className="rounded-3xl p-5 shadow-[var(--shadow-soft)]"
+        style={{ background: "var(--gradient-sky)" }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide text-muted-foreground font-medium">
+              {selected.label}
+            </p>
+            <h2 className="mt-1 text-lg font-semibold text-foreground">
+              Live traffic map
+            </h2>
+          </div>
+
+          <div className="text-4xl leading-none">🚦</div>
+        </div>
+
+        <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+          Live traffic flow and incidents update automatically for your selected location.
+        </p>
+      </section>
+
+      <Suspense
+        fallback={
+          <div className="rounded-3xl bg-card p-5 text-center text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+            Loading traffic map…
+          </div>
+        }
+      >
+        <TrafficMap
+          lat={selected.lat}
+          lon={selected.lon}
+          label={selected.label}
+        />
+      </Suspense>
+
+      <p className="text-center text-[11px] text-muted-foreground">
+        Live traffic overlays powered by TomTom.
+      </p>
+    </>
   );
 }
 
