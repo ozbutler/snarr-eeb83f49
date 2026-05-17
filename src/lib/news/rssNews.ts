@@ -759,7 +759,7 @@ async function buildNewsBundle(location?: LocationInput): Promise<NewsBundle> {
 }
 
 export const fetchNewsBriefing = createServerFn({ method: "GET" })
-  .validator((location?: LocationInput) => location)
+  .inputValidator((location?: LocationInput) => location)
   .handler(async ({ data: location }): Promise<NewsBundle> => {
     const key = cacheKeyForLocation(location);
     const cached = cache.get(key);
@@ -775,7 +775,7 @@ export const fetchNewsBriefing = createServerFn({ method: "GET" })
   });
 
 export const refreshNewsBriefing = createServerFn({ method: "POST" })
-  .validator((location?: LocationInput) => location)
+  .inputValidator((location?: LocationInput) => location)
   .handler(async ({ data: location }): Promise<NewsBundle> => {
     const data = await buildNewsBundle(location);
     cache.set(cacheKeyForLocation(location), {
