@@ -65,6 +65,19 @@ export function NewsSection({
                     <span className="shrink-0">{relativeTime(article.publishedAt)}</span>
                   </div>
 
+                  {article.badges?.length ? (
+                    <div className="mb-2 flex flex-wrap gap-1">
+                      {article.badges.map((badge) => (
+                        <span
+                          key={badge}
+                          className="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary"
+                        >
+                          {badge}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+
                   <h3 className="text-[13px] font-semibold leading-snug text-foreground line-clamp-2">
                     {article.headline}
                   </h3>
@@ -72,6 +85,12 @@ export function NewsSection({
                   <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground line-clamp-3">
                     {article.summary}
                   </p>
+
+                  {typeof article.relevanceScore === "number" ? (
+                    <div className="mt-2 text-[9px] text-muted-foreground opacity-70">
+                      Relevance: {article.relevanceScore}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </a>
