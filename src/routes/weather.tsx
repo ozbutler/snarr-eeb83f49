@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Suspense, lazy, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { PageShell } from "@/components/wb/PageShell";
@@ -9,9 +9,9 @@ import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
 import { HourlyForecast } from "@/components/wb/HourlyForecast";
 import { OutdoorConditionsDetailed } from "@/components/wb/OutdoorConditions";
 import { WeatherCard } from "@/components/wb/WeatherCard";
-import { RadarMap } from "@/components/wb/RadarMap";
-import { SourceStatus } from "@/components/wb/SourceStatus";
 import type { DailyForecast } from "@/lib/weather/types";
+
+const RadarMap = lazy(() => import("@/components/wb/RadarMap").then((module) => ({ default: module.RadarMap })));
 
 type Tab = "today" | "week" | "radar";
 
@@ -77,7 +77,7 @@ function SubTabs({ value, onChange }: { value: Tab; onChange: (t: Tab) => void }
 }
 
 function TodayPanel() {
-  const { forecast, selected, units, locationPermission } = useApp();
+  const { forecast, selected, units } = useApp();
   if (!forecast) return null;
   const { current, today, hourly, alerts, confidence, sources, updatedAt } = forecast;
   const desc = describeCode(today.weatherCode, current.isDay);
@@ -184,34 +184,6 @@ function TodayPanel() {
         </p>
       </CollapsibleCard>
 
-      <SourceStatus
-        sources={[
-          {
-            sourceName: sources.length > 1 ? "Weather APIs" : sources[0] ?? "Weather API",
-            status: "success",
-            lastUpdated: updatedAt,
-            message: sources.length > 1
-              ? `Weather loaded successfully from ${sources.join(" and ")}.`
-              : "Weather API loaded successfully.",
-          },
-          {
-            sourceName: "Device Time",
-            status: "success",
-            message: "Device time loaded successfully.",
-          },
-          {
-            sourceName: "Location Services",
-            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
-            message: selected.current
-              ? locationPermission === "granted"
-                ? "Current device location loaded successfully."
-                : "Using saved current location because live permission is not granted."
-              : "Using selected saved location.",
-            isFallbackData: selected.current && locationPermission !== "granted",
-          },
-        ]}
-      />
-
       <p className="text-center text-[11px] text-muted-foreground">
         Last updated {new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
       </p>
@@ -220,9 +192,9 @@ function TodayPanel() {
 }
 
 function WeekPanel() {
-  const { forecast, selected, locationPermission } = useApp();
+  const { forecast, selected } = useApp();
   if (!forecast) return null;
-  const week = buildSevenDayList(forecast.daily);
+  const week = useMemo(() => buildSevenDayList(forecast.daily), [forecast.daily]);
   return (
     <>
       <section className="rounded-3xl p-5 shadow-[var(--shadow-soft)]" style={{ background: "var(--gradient-sky)" }}>
@@ -234,34 +206,6 @@ function WeekPanel() {
         </div>
       </section>
 
-      <SourceStatus
-        sources={[
-          {
-            sourceName: forecast.sources.length > 1 ? "Forecast APIs" : forecast.sources[0] ?? "Forecast API",
-            status: "success",
-            lastUpdated: forecast.updatedAt,
-            message: forecast.sources.length > 1
-              ? `Weekly forecast loaded successfully from ${forecast.sources.join(" and ")}.`
-              : "Weekly forecast loaded successfully.",
-          },
-          {
-            sourceName: "Device Time",
-            status: "success",
-            message: "Using device time to start the 7-day list with today.",
-          },
-          {
-            sourceName: "Location Services",
-            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
-            message: selected.current
-              ? locationPermission === "granted"
-                ? "Current device location loaded successfully."
-                : "Using saved current location because live permission is not granted."
-              : "Using selected saved location.",
-            isFallbackData: selected.current && locationPermission !== "granted",
-          },
-        ]}
-      />
-
       <div className="space-y-2">
         {week.map((d, i) => (
           <WeatherCard key={d.date} day={d} isToday={i === 0} />
@@ -272,7 +216,7 @@ function WeekPanel() {
 }
 
 function RadarPanel() {
-  const { selected, locationPermission } = useApp();
+  const { selected } = useApp();
 
   return (
     <>
@@ -298,31 +242,19 @@ function RadarPanel() {
         </p>
       </section>
 
-      <SourceStatus
-        sources={[
-          {
-            sourceName: "Windy Radar",
-            status: "success",
-            message: "Radar imagery loaded successfully.",
-          },
-          {
-            sourceName: "Location Services",
-            status: selected.current && locationPermission !== "granted" ? "warning" : "success",
-            message: selected.current
-              ? locationPermission === "granted"
-                ? "Current device location loaded successfully."
-                : "Using saved current location because live permission is not granted."
-              : "Using selected saved location.",
-            isFallbackData: selected.current && locationPermission !== "granted",
-          },
-        ]}
-      />
-
-      <RadarMap
-        lat={selected.lat}
-        lon={selected.lon}
-        label={selected.label}
-      />
+      <Suspense
+        fallback={
+          <div className="rounded-3xl bg-card p-5 text-center text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+            Loading radar…
+          </div>
+        }
+      >
+        <RadarMap
+          lat={selected.lat}
+          lon={selected.lon}
+          label={selected.label}
+        />
+      </Suspense>
 
       <p className="text-center text-[11px] text-muted-foreground">
         Live radar imagery powered by Windy.
