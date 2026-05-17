@@ -39,6 +39,13 @@ export const Route = createFileRoute("/")({
 
 type BriefingContext = NonNullable<ReturnType<typeof buildBriefingContext>>;
 
+type PriorityAlert = {
+  level: "warning" | "info";
+  icon: string;
+  title: string;
+  detail: string;
+};
+
 function Index() {
   const initialNews = Route.useLoaderData();
   const { selected, forecast, units } = useApp();
@@ -88,9 +95,10 @@ function Index() {
 
       {briefing && (
         <>
+          <PriorityAlertsCard alerts={briefing.priorityAlerts} />
           <TodayTimelineCard briefing={briefing} units={units} />
-          <NewsBriefingCard briefing={briefing} newsRefreshing={newsRefreshing} />
-          <RoadsBriefCard briefing={briefing} />
+          <CommuteCard briefing={briefing} />
+          <TopStoryCard briefing={briefing} />
           <NextDaysCard />
         </>
       )}
@@ -106,10 +114,13 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
   const outfit = outfitFor(today.high, today.rainChance);
   const rain = rainWindow(hourly);
   const roads = buildRoadBriefing(today.weatherCode, today.rainChance);
-  const articles = firstArticles(news, 3);
-  const activeNewsSourceCount = news?.rssSources.filter(
-    (source) => source.status === "success" && source.storyCount > 0,
-  ).length ?? 0;
+  const articles = firstArticles(news, 5);
+  const priorityAlerts = buildPriorityAlerts({
+    today,
+    rain,
+    roads,
+    topStory: articles[0],
+  });
 
   return {
     forecast,
@@ -121,7 +132,7 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
     rain,
     roads,
     articles,
-    activeNewsSourceCount,
+    priorityAlerts,
     dateLine: new Date().toLocaleDateString(undefined, {
       weekday: "long",
       month: "long",
@@ -135,6 +146,49 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
       outfit: outfit.main,
     }),
   };
+}
+
+function buildPriorityAlerts({
+  today,
+  rain,
+  roads,
+  topStory,
+}: {
+  today: ForecastData["today"];
+  rain: string | null;
+  roads: ReturnType<typeof buildRoadBriefing>;
+  topStory?: NewsArticle;
+}): PriorityAlert[] {
+  const alerts: PriorityAlert[] = [];
+
+  if (today.rainChance >= 70) {
+    alerts.push({
+      level: "warning",
+      icon: "🌧️",
+      title: "Heavy rain expected",
+      detail: rain ? `Rain most likely ${rain}.` : "Rain is likely today.",
+    });
+  }
+
+  if (roads.level === "heavy") {
+    alerts.push({
+      level: "warning",
+      icon: "🚗",
+      title: "Commute may be slower",
+      detail: roads.recommendation,
+    });
+  }
+
+  if (topStory) {
+    alerts.push({
+      level: "info",
+      icon: "📰",
+      title: "Top story",
+      detail: topStory.headline,
+    });
+  }
+
+  return alerts.slice(0, 3);
 }
 
 function greeting() {
@@ -189,7 +243,7 @@ function MorningBriefingHero({
     );
   }
 
-  const { current, today, weatherDescription, rain, roads, articles, dateLine, recommendation } = briefing;
+  const { current, today, weatherDescription, articles, dateLine, recommendation } = briefing;
 
   return (
     <section
@@ -235,18 +289,18 @@ function MorningBriefingHero({
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
         <BriefingMetricCard
           label="Weather"
-          value={`H ${fmtTemp(today.high, units)} · L ${fmtTemp(today.low, units)}`}
-          detail={rain ? `Rain ${rain}` : `💧 ${today.rainChance}%`}
+          value={`H ${fmtTemp(today.high, units)}`}
+          detail={`L ${fmtTemp(today.low, units)}`}
         />
         <BriefingMetricCard
-          label="Roads"
-          value={capitalize(roads.level)}
-          detail={`${roads.roadEmoji} ${roads.roadLabel}`}
+          label="Stories"
+          value={`${articles.length}`}
+          detail={newsRefreshing ? "Updating" : "Ready"}
         />
         <BriefingMetricCard
-          label="News"
-          value={`${articles.length} stories`}
-          detail={newsRefreshing ? "Updating" : articles.length ? "Ready" : "Loading"}
+          label="Refresh"
+          value="News"
+          detail="Tap below"
         />
       </div>
 
@@ -259,8 +313,38 @@ function MorningBriefingHero({
           disabled={newsRefreshing}
           className="rounded-full bg-card/80 px-3 py-2 text-center text-[11px] font-medium text-foreground shadow-[var(--shadow-card)] disabled:opacity-60"
         >
-          {newsRefreshing ? "Updating…" : "Refresh news"}
+          {newsRefreshing ? "Updating…" : "Refresh"}
         </button>
+      </div>
+    </section>
+  );
+}
+
+function PriorityAlertsCard({ alerts }: { alerts: PriorityAlert[] }) {
+  if (!alerts.length) return null;
+
+  return (
+    <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
+      <div className="flex items-center gap-2 px-1">
+        <span>⚠️</span>
+        <h2 className="text-[13px] font-semibold text-foreground">Priority Alerts</h2>
+      </div>
+
+      <div className="mt-2 space-y-2">
+        {alerts.map((alert) => (
+          <div
+            key={`${alert.title}-${alert.detail}`}
+            className={`rounded-xl px-3 py-2 ${alert.level === "warning" ? "bg-amber-500/10" : "bg-secondary/45"}`}
+          >
+            <div className="flex items-start gap-2">
+              <span className="text-base">{alert.icon}</span>
+              <div>
+                <div className="text-sm font-medium text-foreground">{alert.title}</div>
+                <div className="mt-0.5 text-[12px] text-muted-foreground">{alert.detail}</div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -272,13 +356,13 @@ function TodayTimelineCard({ briefing, units }: { briefing: BriefingContext; uni
   return (
     <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-[13px] font-semibold text-foreground">Today Timeline</h2>
+        <h2 className="text-[13px] font-semibold text-foreground">Today</h2>
         <Link to="/weather" className="text-[11px] text-primary font-medium">Hourly →</Link>
       </div>
       <div className="mt-2 space-y-1.5">
         {points.map((point) => (
           <div key={point.label} className="flex items-center gap-2 rounded-xl bg-secondary/45 px-3 py-2">
-            <span className="w-16 shrink-0 text-[11px] font-medium text-muted-foreground">{point.label}</span>
+            <span className="w-20 shrink-0 text-[11px] font-medium text-muted-foreground">{point.label}</span>
             <span className="text-base">{point.icon}</span>
             <span className="min-w-0 flex-1 text-[12px] text-foreground/85">{point.text}</span>
           </div>
@@ -290,25 +374,89 @@ function TodayTimelineCard({ briefing, units }: { briefing: BriefingContext; uni
 
 function buildTodayTimeline(briefing: BriefingContext, units: string) {
   const { current, today, rain, roads, outfit } = briefing;
-  const nextRainText = rain ? `Rain most likely ${rain}` : "No major rain window expected";
 
   return [
     {
-      label: "Now",
-      icon: briefing.weatherDescription.emoji,
-      text: `${fmtTemp(current.temp, units)}, feels ${fmtTemp(current.feelsLike, units)}.` ,
+      label: "Morning",
+      icon: "☀️",
+      text: `${fmtTemp(current.temp, units)}, feels ${fmtTemp(current.feelsLike, units)}.`,
     },
     {
-      label: "Today",
-      icon: today.rainChance >= 50 ? "🌧️" : "👕",
-      text: today.rainChance >= 50 ? nextRainText : `Wear: ${outfit.main}.`,
+      label: "Afternoon",
+      icon: today.rainChance >= 50 ? "🌧️" : "😎",
+      text: today.rainChance >= 50 ? rain || "Rain likely later today." : `High near ${fmtTemp(today.high, units)}.` ,
     },
     {
-      label: "Roads",
+      label: "Commute",
       icon: roads.emoji,
-      text: `${capitalize(roads.level)} traffic, ${roads.roadLabel.toLowerCase()} roads.`,
+      text: `${capitalize(roads.level)} traffic expected.`,
+    },
+    {
+      label: "Tonight",
+      icon: "🌙",
+      text: `Low near ${fmtTemp(today.low, units)}. ${outfit.main}.`,
     },
   ];
+}
+
+function CommuteCard({ briefing }: { briefing: BriefingContext }) {
+  const { roads } = briefing;
+
+  return (
+    <CollapsibleCard
+      id="briefing:commute"
+      title="Commute"
+      icon="🚗"
+      summary={`${capitalize(roads.level)} traffic · ${roads.roadLabel}`}
+    >
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">{roads.summary}</p>
+
+        <div className="rounded-xl bg-secondary/45 px-3 py-2">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Recommendation</div>
+          <div className="mt-1 text-sm text-foreground/85">{roads.recommendation}</div>
+        </div>
+      </div>
+
+      <div className="mt-2 text-right">
+        <Link to="/roads" className="text-xs text-primary font-medium">Open roads →</Link>
+      </div>
+    </CollapsibleCard>
+  );
+}
+
+function TopStoryCard({ briefing }: { briefing: BriefingContext }) {
+  const story = briefing.articles[0];
+
+  if (!story) return null;
+
+  return (
+    <CollapsibleCard
+      id="briefing:top-story"
+      title="Top Story"
+      icon="📰"
+      summary={story.source}
+    >
+      <a
+        href={story.url}
+        target="_blank"
+        rel="noreferrer"
+        className="block rounded-xl bg-secondary/45 px-3 py-3 transition-colors hover:bg-secondary/70"
+      >
+        <div className="text-base font-semibold leading-snug text-foreground">
+          {story.headline}
+        </div>
+
+        <div className="mt-2 text-sm text-muted-foreground">
+          {story.summary || "Open the full article to read more."}
+        </div>
+      </a>
+
+      <div className="mt-2 text-right">
+        <Link to="/news" className="text-xs text-primary font-medium">More stories →</Link>
+      </div>
+    </CollapsibleCard>
+  );
 }
 
 function BriefingMetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
@@ -366,72 +514,6 @@ function buildRecommendation({
 
 function capitalize(value: string) {
   return value.length ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
-}
-
-function RoadsBriefCard({ briefing }: { briefing: BriefingContext }) {
-  const { roads } = briefing;
-  const summary = `${roads.emoji} ${capitalize(roads.level)} traffic · ${roads.roadLabel.toLowerCase()} roads`;
-
-  return (
-    <CollapsibleCard id="briefing:roads" title="Roads Brief" icon="🛣️" summary={summary}>
-      <div className="space-y-2">
-        <p className="text-sm text-muted-foreground">{roads.summary}</p>
-        <div className="rounded-xl bg-secondary/45 px-3 py-2">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Recommendation</div>
-          <div className="mt-1 text-sm text-foreground/85">{roads.recommendation}</div>
-        </div>
-      </div>
-      <div className="mt-2 text-right">
-        <Link to="/roads" className="text-xs text-primary font-medium">Roads details →</Link>
-      </div>
-    </CollapsibleCard>
-  );
-}
-
-function NewsBriefingCard({
-  briefing,
-  newsRefreshing,
-}: {
-  briefing: BriefingContext;
-  newsRefreshing: boolean;
-}) {
-  const { articles, activeNewsSourceCount } = briefing;
-
-  return (
-    <CollapsibleCard
-      id="briefing:news"
-      title="Top Stories"
-      icon="📰"
-      summary={articles.length ? `${articles.length} stories · ${activeNewsSourceCount} source${activeNewsSourceCount === 1 ? "" : "s"}` : newsRefreshing ? "Loading local-first stories" : "No stories loaded yet"}
-    >
-      {articles.length ? (
-        <div className="space-y-2">
-          {articles.map((article) => (
-            <a
-              key={article.id}
-              href={article.url}
-              target="_blank"
-              rel="noreferrer"
-              className="block rounded-xl bg-secondary/45 px-3 py-2 transition-colors hover:bg-secondary/70"
-            >
-              <div className="text-sm font-medium leading-snug text-foreground">{article.headline}</div>
-              <div className="mt-1 text-[11px] text-muted-foreground">{article.source}</div>
-            </a>
-          ))}
-          <div className="text-right">
-            <Link to="/news" className="text-xs text-primary font-medium">Full news briefing →</Link>
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-xl bg-secondary/45 px-3 py-2 text-sm text-muted-foreground">
-          News is still loading. Open the News page for the full briefing.
-          <div className="mt-2 text-right">
-            <Link to="/news" className="text-xs text-primary font-medium">Open news →</Link>
-          </div>
-        </div>
-      )}
-    </CollapsibleCard>
-  );
 }
 
 function NextDaysCard() {
