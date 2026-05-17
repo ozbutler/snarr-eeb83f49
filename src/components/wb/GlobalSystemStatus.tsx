@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useLocation } from "@tanstack/react-router";
 import { useApp } from "@/lib/weather/AppContext";
@@ -38,6 +38,13 @@ type CheckResult = {
 
 type CheckState = Partial<Record<SourceKey, CheckResult>>;
 type RefreshingState = Partial<Record<SourceKey, boolean>>;
+
+const AUTO_CHECK_KEYS: Record<PageGroup, SourceKey[]> = {
+  home: ["roadSummary", "newsSummary"],
+  weather: ["metNorway", "noaaAlerts"],
+  roads: ["tomTom", "traffic511"],
+  news: ["rssNews"],
+};
 
 function getOverallStatus(sources: SourceStatusItem[]): OverallStatus {
   const hasError = sources.some((source) => source.status === "error");
@@ -108,6 +115,7 @@ export function GlobalSystemStatus() {
   const [open, setOpen] = useState(false);
   const [checks, setChecks] = useState<CheckState>({});
   const [refreshing, setRefreshing] = useState<RefreshingState>({});
+  const autoCheckRunRef = useRef<Set<string>>(new Set());
 
   async function runCheck(key: SourceKey) {
     if (refreshing[key]) return;
@@ -214,6 +222,19 @@ export function GlobalSystemStatus() {
     }
   }
 
+  useEffect(() => {
+    const keys = AUTO_CHECK_KEYS[pageGroup];
+    if (!keys.length) return;
+
+    const runId = `${pageGroup}:${selected.lat.toFixed(3)},${selected.lon.toFixed(3)}:${forecast?.updatedAt ?? "no-forecast"}`;
+    if (autoCheckRunRef.current.has(runId)) return;
+
+    autoCheckRunRef.current.add(runId);
+    keys.forEach((key) => {
+      void runCheck(key);
+    });
+  }, [pageGroup, selected.lat, selected.lon, forecast?.updatedAt]);
+
   const sources = useMemo<SourceStatusItem[]>(() => {
     const responded = forecast?.sources ?? [];
     const hasSource = (name: string) => responded.includes(name);
@@ -261,7 +282,7 @@ export function GlobalSystemStatus() {
       newsSummary: {
         sourceName: "RSS News Sources",
         status: "warning",
-        message: "Tap to refresh RSS news feeds.",
+        message: "Checking RSS news feeds automatically.",
       },
       openMeteo: {
         sourceName: "Open-Meteo",
@@ -296,7 +317,7 @@ export function GlobalSystemStatus() {
         lastUpdated: forecast?.updatedAt,
         message: hasSource("MET Norway")
           ? "MET Norway comparison forecast loaded successfully."
-          : "Tap to check MET Norway comparison forecast.",
+          : "Checking MET Norway comparison forecast automatically.",
         isFallbackData: !hasSource("MET Norway"),
       },
       noaaAlerts: {
@@ -310,12 +331,12 @@ export function GlobalSystemStatus() {
       tomTom: {
         sourceName: "TomTom Traffic",
         status: "warning",
-        message: "Tap to check live TomTom traffic.",
+        message: "Checking live TomTom traffic automatically.",
       },
       traffic511: {
         sourceName: "511 Traffic Feeds",
         status: "warning",
-        message: "511 traffic feeds are location-specific. Tap to check availability for this location.",
+        message: "511 traffic feeds are location-specific. Checking availability automatically.",
         isFallbackData: true,
       },
       weatherTrafficFallback: {
@@ -329,7 +350,7 @@ export function GlobalSystemStatus() {
       rssNews: {
         sourceName: "RSS News Sources",
         status: "warning",
-        message: "Tap to refresh RSS news feeds.",
+        message: "Checking RSS news feeds automatically.",
       },
       location: locationSource,
       deviceTime: deviceTimeSource,
