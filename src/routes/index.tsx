@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageShell } from "@/components/wb/PageShell";
 import { CollapsibleCard } from "@/components/wb/CollapsibleCard";
-import { OutdoorConditionsCard } from "@/components/wb/OutdoorConditions";
-import { TodayAtAGlanceCard } from "@/components/wb/TodayAtAGlanceCard";
 import { useApp } from "@/lib/weather/AppContext";
 import { describeCode, fmtTemp, outfitFor, parseForecastDateLocal, rainWindow } from "@/lib/weather/weatherUtils";
 import { buildRoadBriefing } from "@/lib/weather/trafficUtils";
@@ -39,7 +37,7 @@ export const Route = createFileRoute("/")({
   component: Index,
 });
 
-type BriefingContext = ReturnType<typeof buildBriefingContext>;
+type BriefingContext = NonNullable<ReturnType<typeof buildBriefingContext>>;
 
 function Index() {
   const initialNews = Route.useLoaderData();
@@ -90,15 +88,12 @@ function Index() {
 
       {briefing && (
         <>
-          <WeatherBriefCard briefing={briefing} units={units} />
-          <RoadsBriefCard briefing={briefing} />
+          <TodayTimelineCard briefing={briefing} units={units} />
           <NewsBriefingCard briefing={briefing} newsRefreshing={newsRefreshing} />
+          <RoadsBriefCard briefing={briefing} />
+          <NextDaysCard />
         </>
       )}
-
-      <TodayAtAGlanceCard />
-      <NextDaysCard />
-      <OutdoorConditionsCard />
     </PageShell>
   );
 }
@@ -175,7 +170,7 @@ function MorningBriefingHero({
   selectedLabel,
   units,
 }: {
-  briefing: BriefingContext;
+  briefing: BriefingContext | null;
   newsError: string | null;
   newsRefreshing: boolean;
   onRefreshNews: () => void;
@@ -241,7 +236,7 @@ function MorningBriefingHero({
         <BriefingMetricCard
           label="Weather"
           value={`H ${fmtTemp(today.high, units)} · L ${fmtTemp(today.low, units)}`}
-          detail={`💧 ${today.rainChance}%`}
+          detail={rain ? `Rain ${rain}` : `💧 ${today.rainChance}%`}
         />
         <BriefingMetricCard
           label="Roads"
@@ -253,11 +248,6 @@ function MorningBriefingHero({
           value={`${articles.length} stories`}
           detail={newsRefreshing ? "Updating" : articles.length ? "Ready" : "Loading"}
         />
-      </div>
-
-      <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>{rain ? `Rain most likely ${rain}` : "No major rain window expected"}</span>
-        <Link to="/weather" className="font-medium text-primary">Details →</Link>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2">
@@ -276,12 +266,57 @@ function MorningBriefingHero({
   );
 }
 
+function TodayTimelineCard({ briefing, units }: { briefing: BriefingContext; units: string }) {
+  const points = buildTodayTimeline(briefing, units);
+
+  return (
+    <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
+      <div className="flex items-center justify-between px-1">
+        <h2 className="text-[13px] font-semibold text-foreground">Today Timeline</h2>
+        <Link to="/weather" className="text-[11px] text-primary font-medium">Hourly →</Link>
+      </div>
+      <div className="mt-2 space-y-1.5">
+        {points.map((point) => (
+          <div key={point.label} className="flex items-center gap-2 rounded-xl bg-secondary/45 px-3 py-2">
+            <span className="w-16 shrink-0 text-[11px] font-medium text-muted-foreground">{point.label}</span>
+            <span className="text-base">{point.icon}</span>
+            <span className="min-w-0 flex-1 text-[12px] text-foreground/85">{point.text}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function buildTodayTimeline(briefing: BriefingContext, units: string) {
+  const { current, today, rain, roads, outfit } = briefing;
+  const nextRainText = rain ? `Rain most likely ${rain}` : "No major rain window expected";
+
+  return [
+    {
+      label: "Now",
+      icon: briefing.weatherDescription.emoji,
+      text: `${fmtTemp(current.temp, units)}, feels ${fmtTemp(current.feelsLike, units)}.` ,
+    },
+    {
+      label: "Today",
+      icon: today.rainChance >= 50 ? "🌧️" : "👕",
+      text: today.rainChance >= 50 ? nextRainText : `Wear: ${outfit.main}.`,
+    },
+    {
+      label: "Roads",
+      icon: roads.emoji,
+      text: `${capitalize(roads.level)} traffic, ${roads.roadLabel.toLowerCase()} roads.`,
+    },
+  ];
+}
+
 function BriefingMetricCard({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
     <div className="rounded-xl bg-card/70 p-2.5">
       <div className="text-[10px] text-muted-foreground uppercase">{label}</div>
       <div className="mt-0.5 text-[12px] font-semibold">{value}</div>
-      <div className="mt-0.5 text-[10px] text-muted-foreground">{detail}</div>
+      <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{detail}</div>
     </div>
   );
 }
@@ -333,45 +368,13 @@ function capitalize(value: string) {
   return value.length ? `${value[0].toUpperCase()}${value.slice(1)}` : value;
 }
 
-function WeatherBriefCard({ briefing, units }: { briefing: NonNullable<BriefingContext>; units: string }) {
-  const { current, today, weatherDescription, rain, outfit } = briefing;
-
-  return (
-    <CollapsibleCard
-      id="briefing:weather"
-      title="Weather Brief"
-      icon={weatherDescription.emoji}
-      summary={`${fmtTemp(today.high, units)} high · ${today.rainChance}% rain`}
-    >
-      <div className="space-y-2 text-sm">
-        <p className="text-foreground/85">
-          {weatherDescription.label}. High {fmtTemp(today.high, units)}, low {fmtTemp(today.low, units)}, feels like {fmtTemp(current.feelsLike, units)} now.
-        </p>
-        <BriefingNote>
-          {rain ? `Rain most likely ${rain}.` : "No major rain window expected right now."}
-        </BriefingNote>
-        <BriefingNote>
-          Wear: {outfit.main}{outfit.extra ? `, ${outfit.extra.toLowerCase()}` : ""}.
-        </BriefingNote>
-      </div>
-    </CollapsibleCard>
-  );
-}
-
-function RoadsBriefCard({ briefing }: { briefing: NonNullable<BriefingContext> }) {
+function RoadsBriefCard({ briefing }: { briefing: BriefingContext }) {
   const { roads } = briefing;
   const summary = `${roads.emoji} ${capitalize(roads.level)} traffic · ${roads.roadLabel.toLowerCase()} roads`;
 
   return (
     <CollapsibleCard id="briefing:roads" title="Roads Brief" icon="🛣️" summary={summary}>
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-sm">
-          <span>{roads.emoji}</span>
-          <span className="font-medium capitalize">{roads.level} traffic</span>
-          <span className="text-muted-foreground">·</span>
-          <span>{roads.roadEmoji}</span>
-          <span>{roads.roadLabel} roads</span>
-        </div>
         <p className="text-sm text-muted-foreground">{roads.summary}</p>
         <div className="rounded-xl bg-secondary/45 px-3 py-2">
           <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Recommendation</div>
@@ -389,7 +392,7 @@ function NewsBriefingCard({
   briefing,
   newsRefreshing,
 }: {
-  briefing: NonNullable<BriefingContext>;
+  briefing: BriefingContext;
   newsRefreshing: boolean;
 }) {
   const { articles, activeNewsSourceCount } = briefing;
@@ -397,9 +400,9 @@ function NewsBriefingCard({
   return (
     <CollapsibleCard
       id="briefing:news"
-      title="News Brief"
+      title="Top Stories"
       icon="📰"
-      summary={articles.length ? `${articles.length} top stories · ${activeNewsSourceCount} source${activeNewsSourceCount === 1 ? "" : "s"}` : newsRefreshing ? "Loading local-first stories" : "No stories loaded yet"}
+      summary={articles.length ? `${articles.length} stories · ${activeNewsSourceCount} source${activeNewsSourceCount === 1 ? "" : "s"}` : newsRefreshing ? "Loading local-first stories" : "No stories loaded yet"}
     >
       {articles.length ? (
         <div className="space-y-2">
@@ -428,14 +431,6 @@ function NewsBriefingCard({
         </div>
       )}
     </CollapsibleCard>
-  );
-}
-
-function BriefingNote({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-xl bg-secondary/45 px-3 py-2 text-[12px] text-muted-foreground">
-      {children}
-    </div>
   );
 }
 
