@@ -22,15 +22,15 @@ export const Route = createFileRoute("/")({
   },
   head: () => ({
     meta: [
-      { title: "Morning Briefing — Snarr" },
+      { title: "Daily Brief — Snarr" },
       {
         name: "description",
-        content: "Your daily weather, roads, and news briefing in one simple morning dashboard.",
+        content: "Your adaptive weather, roads, and news brief in one simple dashboard.",
       },
-      { property: "og:title", content: "Morning Briefing — Snarr" },
+      { property: "og:title", content: "Daily Brief — Snarr" },
       {
         property: "og:description",
-        content: "A personalized morning briefing for weather, roads, and local-first news.",
+        content: "A personalized daily brief for weather, roads, and local-first news.",
       },
     ],
   }),
@@ -39,6 +39,7 @@ export const Route = createFileRoute("/")({
 
 type SeverityLevel = "critical" | "important" | "normal" | "background";
 type SummaryState = "calm" | "moderate" | "disruptive" | "severe";
+type DayPart = "morning" | "afternoon" | "evening" | "night";
 type BriefingContext = NonNullable<ReturnType<typeof buildBriefingContext>>;
 
 type PriorityAlert = {
@@ -78,7 +79,7 @@ function Index() {
       });
       setNews(nextNews);
     } catch (e) {
-      setNewsError(e instanceof Error ? e.message : "Could not refresh the news briefing.");
+      setNewsError(e instanceof Error ? e.message : "Could not refresh the news brief.");
     } finally {
       setNewsRefreshing(false);
     }
@@ -103,6 +104,7 @@ function Index() {
 
     console.log("Homepage severity:", briefing.severity.totalScore);
     console.log("Homepage mood:", briefing.severity.summaryState);
+    console.log("Daily brief day part:", briefing.dayPart);
     console.log("Sorted homepage sections:", adaptiveSections.map((section) => ({
       id: section.id,
       priorityScore: section.priorityScore,
@@ -115,7 +117,7 @@ function Index() {
     <PageShell>
       {briefing?.priorityAlerts.length ? <PriorityAlertsCard alerts={briefing.priorityAlerts} /> : null}
 
-      <MorningBriefingHero
+      <DailyBriefHero
         briefing={briefing}
         newsError={newsError}
         newsRefreshing={newsRefreshing}
@@ -135,13 +137,14 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
   if (!forecast) return null;
 
   const { current, today, hourly } = forecast;
+  const dayPart = getDayPart();
   const weatherDescription = describeCode(today.weatherCode, current.isDay);
   const outfit = outfitFor(today.high, today.rainChance);
   const rain = rainWindow(hourly);
   const roads = buildRoadBriefing(today.weatherCode, today.rainChance);
   const articles = firstArticles(news, 5);
   const severity = calculateBriefingSeverity({ today, roads, topStory: articles[0] });
-  const trafficSummary = buildTrafficSummary({ roads, rainChance: today.rainChance, rain });
+  const trafficSummary = buildTrafficSummary({ roads, rainChance: today.rainChance, rain, dayPart });
   const priorityAlerts = buildPriorityAlerts({
     today,
     rain,
@@ -155,6 +158,7 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
     current,
     today,
     hourly,
+    dayPart,
     weatherDescription,
     outfit,
     rain,
@@ -175,24 +179,50 @@ function buildBriefingContext(forecast: ForecastData | null, news: NewsBundle | 
       rainWindowText: rain,
       outfit: outfit.main,
       summaryState: severity.summaryState,
+      dayPart,
     }),
   };
+}
+
+function getDayPart(): DayPart {
+  const hour = new Date().getHours();
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  if (hour < 21) return "evening";
+  return "night";
+}
+
+function getGreeting(dayPart: DayPart) {
+  if (dayPart === "morning") return "Good morning";
+  if (dayPart === "afternoon") return "Good afternoon";
+  if (dayPart === "evening") return "Good evening";
+  return "Good night";
 }
 
 function buildTrafficSummary({
   roads,
   rainChance,
   rain,
+  dayPart,
 }: {
   roads: ReturnType<typeof buildRoadBriefing>;
   rainChance: number;
   rain: string | null;
+  dayPart: DayPart;
 }) {
-  if (roads.level === "heavy") return "Expect heavier commute delays today.";
-  if (roads.level === "moderate" && rainChance >= 60) return "Traffic may be slower, and rain could make roads messy.";
-  if (roads.level === "moderate") return "Traffic may be slower than usual.";
-  if (rainChance >= 70) return rain ? `Traffic looks manageable, but rain ${rain} could affect roads.` : "Traffic looks manageable, but rain may affect roads.";
-  return "Traffic looks manageable this morning.";
+  const timeLabel = dayPart === "morning"
+    ? "this morning"
+    : dayPart === "afternoon"
+      ? "this afternoon"
+      : dayPart === "evening"
+        ? "this evening"
+        : "tonight";
+
+  if (roads.level === "heavy") return `Expect heavier traffic delays ${timeLabel}.`;
+  if (roads.level === "moderate" && rainChance >= 60) return `Traffic may be slower ${timeLabel}, and rain could make roads messy.`;
+  if (roads.level === "moderate") return `Traffic may be slower than usual ${timeLabel}.`;
+  if (rainChance >= 70) return rain ? `Traffic looks manageable, but rain ${rain} could affect roads.` : `Traffic looks manageable, but rain may affect roads ${timeLabel}.`;
+  return `Traffic looks manageable ${timeLabel}.`;
 }
 
 function calculateBriefingSeverity({
@@ -360,13 +390,6 @@ function buildPriorityAlerts({
   return alerts.sort((a, b) => b.score - a.score).slice(0, 3);
 }
 
-function greeting() {
-  const hour = new Date().getHours();
-  if (hour < 12) return "Good morning";
-  if (hour < 17) return "Good afternoon";
-  return "Good evening";
-}
-
 function firstArticles(news: NewsBundle | null, limit = 3): NewsArticle[] {
   if (!news) return [];
 
@@ -385,7 +408,7 @@ function firstArticles(news: NewsBundle | null, limit = 3): NewsArticle[] {
   }).slice(0, limit);
 }
 
-function MorningBriefingHero({
+function DailyBriefHero({
   briefing,
   newsError,
   newsRefreshing,
@@ -404,7 +427,7 @@ function MorningBriefingHero({
     return (
       <section className="rounded-3xl bg-card p-6 shadow-[var(--shadow-card)] text-center">
         <div className="text-4xl">☀️</div>
-        <h1 className="mt-3 text-xl font-semibold">Building your morning briefing</h1>
+        <h1 className="mt-3 text-xl font-semibold">Building your daily brief</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Snarr is loading weather, roads, and news for your selected location.
         </p>
@@ -412,7 +435,7 @@ function MorningBriefingHero({
     );
   }
 
-  const { current, today, weatherDescription, articles, dateLine, recommendation, severity, trafficSummary } = briefing;
+  const { current, today, dayPart, weatherDescription, articles, dateLine, recommendation, severity, trafficSummary } = briefing;
 
   return (
     <section
@@ -422,10 +445,10 @@ function MorningBriefingHero({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-            Morning Briefing · {selectedLabel}
+            Daily Brief · {selectedLabel}
           </p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-foreground">
-            {greeting()} {weatherDescription.emoji}
+            {getGreeting(dayPart)} {weatherDescription.emoji}
           </h1>
           <p className="mt-0.5 text-[12px] text-muted-foreground/85">{dateLine}</p>
         </div>
@@ -528,7 +551,7 @@ function TodayTimelineCard({ briefing, units, compact }: { briefing: BriefingCon
   return (
     <section className="rounded-2xl bg-card p-3 shadow-[var(--shadow-card)]">
       <div className="flex items-center justify-between px-1">
-        <h2 className="text-[13px] font-semibold text-foreground">Today</h2>
+        <h2 className="text-[13px] font-semibold text-foreground">Rest of Today</h2>
         <Link to="/weather" className="text-[11px] text-primary font-medium">Hourly →</Link>
       </div>
       <div className="mt-2 space-y-1.5">
@@ -545,20 +568,20 @@ function TodayTimelineCard({ briefing, units, compact }: { briefing: BriefingCon
 }
 
 function buildTodayTimeline(briefing: BriefingContext, units: string, compact?: boolean) {
-  const { current, today, rain, roads, outfit } = briefing;
-  const timeline = [
+  const { current, today, rain, roads, outfit, dayPart } = briefing;
+  const baseTimeline = [
     {
-      label: "Morning",
-      icon: "☀️",
+      label: dayPart === "morning" ? "Now" : "Current",
+      icon: briefing.weatherDescription.emoji,
       text: `${fmtTemp(current.temp, units)}, feels ${fmtTemp(current.feelsLike, units)}.`,
     },
     {
-      label: "Afternoon",
+      label: dayPart === "morning" ? "Afternoon" : dayPart === "afternoon" ? "Later" : "Evening",
       icon: today.rainChance >= 50 ? "🌧️" : "😎",
-      text: today.rainChance >= 50 ? rain || "Rain likely later today." : `High near ${fmtTemp(today.high, units)}.` ,
+      text: today.rainChance >= 50 ? rain || "Rain is possible later today." : `High near ${fmtTemp(today.high, units)}.` ,
     },
     {
-      label: "Commute",
+      label: dayPart === "night" ? "Tomorrow AM" : "Traffic",
       icon: roads.emoji,
       text: `${capitalize(roads.level)} traffic expected.`,
     },
@@ -569,16 +592,21 @@ function buildTodayTimeline(briefing: BriefingContext, units: string, compact?: 
     },
   ];
 
+  const timeline = dayPart === "night"
+    ? [baseTimeline[0], baseTimeline[3], baseTimeline[2]]
+    : baseTimeline;
+
   return compact ? timeline.slice(0, 3) : timeline;
 }
 
 function CommuteCard({ briefing, compact }: { briefing: BriefingContext; compact?: boolean }) {
-  const { roads } = briefing;
+  const { roads, dayPart } = briefing;
+  const title = dayPart === "night" ? "Tomorrow's Commute" : "Traffic";
 
   return (
     <CollapsibleCard
       id="briefing:commute"
-      title="Commute"
+      title={title}
       icon="🚗"
       summary={`${capitalize(roads.level)} traffic · ${roads.roadLabel}`}
     >
@@ -664,6 +692,7 @@ function buildRecommendation({
   rainWindowText,
   outfit,
   summaryState,
+  dayPart,
 }: {
   rainChance: number;
   high: number;
@@ -671,27 +700,31 @@ function buildRecommendation({
   rainWindowText: string | null;
   outfit: string;
   summaryState: SummaryState;
+  dayPart: DayPart;
 }) {
   if (summaryState === "severe") {
     return "Multiple issues may affect your day. Check the priority alerts before heading out.";
   }
 
   if (rainChance >= 60) {
-    return `Bring rain gear today. ${rainWindowText ? `Rain is most likely ${rainWindowText}. ` : "Rain is likely at some point today. "}${outfit} is the safest clothing choice.`;
+    return `Keep rain gear close. ${rainWindowText ? `Rain is most likely ${rainWindowText}. ` : "Rain is likely at some point today. "}${outfit} is the safest clothing choice.`;
   }
 
   if (roadLevel === "heavy") {
-    return "Roads may be slower than usual today. Leave a little earlier and check the roads page before heading out.";
+    return dayPart === "night"
+      ? "Roads may still be slow tonight. Check conditions before heading out."
+      : "Roads may be slower than usual. Leave a little earlier and check the roads page before heading out.";
   }
 
   if (high >= 85) {
-    return `It will be hot today, so dress light and stay hydrated. ${outfit} should work well.`;
+    return `It will stay warm today, so dress light and stay hydrated. ${outfit} should work well.`;
   }
 
   if (high <= 45) {
     return `It will feel cold today. ${outfit} is the better move before heading out.`;
   }
 
+  if (dayPart === "night") return `The rest of the day looks manageable. ${outfit} should work if you are heading back out.`;
   return `Conditions look manageable today. ${outfit} should work, and roads do not look unusually risky from the current forecast.`;
 }
 
