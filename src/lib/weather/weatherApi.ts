@@ -1,6 +1,6 @@
 // Multi-source weather fetching with metric-level source transparency.
-// Primary display source: Open-Meteo. Fallback display source: Pirate Weather.
-// Metric values are averaged when multiple providers return usable data.
+// Primary display source: Open-Meteo. Fallback display source: Pirate Weather or MET Norway.
+// Metric values are aggregated when multiple providers return usable data.
 
 import type {
   ForecastBundle,
@@ -12,6 +12,7 @@ import type {
   PeriodSummary,
 } from "./types";
 import { fetchPirateWeather, type PirateNormalized } from "./pirate.functions";
+import { fetchMetNorwayForecast, type MetNorwayNormalized } from "./metNorway";
 import { forecastDateLocalKey, localDateKey } from "./weatherUtils";
 import {
   buildMetric,
@@ -22,6 +23,7 @@ import {
 const OPEN_METEO = "Open-Meteo";
 const PIRATE = "Pirate Weather";
 const WEATHER_GOV = "Weather.gov";
+const MET_NORWAY = "MET Norway";
 
 // ---- Open-Meteo (primary) -------------------------------------------------
 
@@ -121,14 +123,81 @@ async function fetchNws(lat: number, lon: number): Promise<NwsSummary | null> {
   }
 }
 
+// ---- Provider normalization helpers ---------------------------------------
+
+function pirateCurrent(pirateRes: PirateNormalized | null): CurrentWeather | undefined {
+  if (!pirateRes?.current) return undefined;
+  return {
+    temp: pirateRes.current.temp,
+    feelsLike: pirateRes.current.feelsLike,
+    weatherCode: pirateRes.current.weatherCode,
+    isDay: pirateRes.current.isDay,
+  };
+}
+
+function pirateDaily(pirateRes: PirateNormalized | null): DailyForecast[] {
+  return pirateRes?.daily?.map((d) => ({
+    date: d.date,
+    high: d.high,
+    low: d.low,
+    feelsHigh: d.feelsHigh,
+    rainChance: d.rainChance,
+    weatherCode: 1,
+  })) ?? [];
+}
+
+function pirateHourly(pirateRes: PirateNormalized | null): HourlyPoint[] {
+  return pirateRes?.hourly?.map((h) => ({
+    time: h.time,
+    rainChance: h.rainChance,
+    temp: h.temp,
+    feelsLike: h.feelsLike,
+    uvIndex: h.uvIndex,
+  })) ?? [];
+}
+
+function getDailyForDate(days: DailyForecast[] | undefined, date: string) {
+  return days?.find((d) => forecastDateLocalKey(d.date) === forecastDateLocalKey(date));
+}
+
+function getHourlyForTime(points: HourlyPoint[] | undefined, time?: string) {
+  if (!time) return undefined;
+  return points?.find((h) => h.time === time);
+}
+
+function hasUsableCurrent(current?: CurrentWeather) {
+  return Boolean(
+    current &&
+    Number.isFinite(current.temp) &&
+    Number.isFinite(current.feelsLike),
+  );
+}
+
+function hasUsableDaily(daily?: DailyForecast[]) {
+  return Boolean(daily?.some((d) => Number.isFinite(d.high) && Number.isFinite(d.low)));
+}
+
+function hasUsableHourly(hourly?: HourlyPoint[]) {
+  return Boolean(hourly?.some((h) => Number.isFinite(h.temp) || Number.isFinite(h.rainChance)));
+}
+
+function weatherCodeFromProviders(...values: Array<number | undefined>) {
+  return values.find((value) => typeof value === "number" && Number.isFinite(value)) ?? 1;
+}
+
+function isDayFromCurrent(...values: Array<boolean | undefined>) {
+  return values.find((value) => typeof value === "boolean") ?? true;
+}
+
 // ---- Public API -----------------------------------------------------------
 
 export async function fetchForecast(lat: number, lon: number): Promise<ForecastBundle> {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const [omRes, nws, pirateRes] = await Promise.all([
+  const [omRes, nws, pirateRes, metRes] = await Promise.all([
     fetchOpenMeteo(lat, lon).catch(() => null),
     fetchNws(lat, lon),
     fetchPirateWeather({ data: { lat, lon, tz } }).catch(() => null as PirateNormalized | null),
+    fetchMetNorwayForecast(lat, lon).catch(() => null as MetNorwayNormalized | null),
   ]);
 
   const pirateHasCurrent = !!pirateRes?.current;
@@ -136,140 +205,172 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
   const pirateHasHourly = !!pirateRes?.hourly?.length;
   const pirateUsable = pirateHasCurrent || pirateHasDaily || pirateHasHourly;
 
-  let currentBase: CurrentWeather;
-  let dailyBase: DailyForecast[];
-  let fullHourlyBase: HourlyPoint[];
+  const metHasCurrent = hasUsableCurrent(metRes?.current);
+  const metHasDaily = hasUsableDaily(metRes?.daily);
+  const metHasHourly = hasUsableHourly(metRes?.hourly);
+  const metUsable = metHasCurrent || metHasDaily || metHasHourly;
 
-  if (omRes) {
-    currentBase = omRes.current;
-    dailyBase = omRes.daily;
-    fullHourlyBase = omRes.fullHourly;
-  } else if (pirateRes && pirateRes.current && pirateRes.daily.length) {
-    currentBase = {
-      temp: pirateRes.current.temp,
-      feelsLike: pirateRes.current.feelsLike,
-      weatherCode: pirateRes.current.weatherCode,
-      isDay: pirateRes.current.isDay,
-    };
-    dailyBase = pirateRes.daily.map((d) => ({
-      date: d.date,
-      high: d.high,
-      low: d.low,
-      feelsHigh: d.feelsHigh,
-      rainChance: d.rainChance,
-      weatherCode: 1,
-    }));
-    fullHourlyBase = pirateRes.hourly.map((h) => ({
-      time: h.time,
-      rainChance: h.rainChance,
-      temp: h.temp,
-      feelsLike: h.feelsLike,
-      uvIndex: h.uvIndex,
-    }));
-  } else {
+  const providersUsed = [
+    ...(omRes ? [OPEN_METEO] : []),
+    ...(pirateUsable ? [PIRATE] : []),
+    ...(nws ? [WEATHER_GOV] : []),
+    ...(metUsable ? [MET_NORWAY] : []),
+  ];
+
+  const providersFailed = [
+    ...(!omRes ? [OPEN_METEO] : []),
+    ...(!pirateUsable ? [PIRATE] : []),
+    ...(!nws ? [WEATHER_GOV] : []),
+    ...(!metUsable ? [MET_NORWAY] : []),
+  ];
+
+  console.log("Weather providers used:", providersUsed);
+  console.log("Weather providers failed:", providersFailed);
+
+  const currentOptions = [
+    omRes?.current,
+    pirateCurrent(pirateRes),
+    metRes?.current,
+  ].filter(hasUsableCurrent);
+
+  const dailyOptions = [
+    omRes?.daily,
+    pirateDaily(pirateRes),
+    metRes?.daily,
+  ].filter(hasUsableDaily);
+
+  const hourlyOptions = [
+    omRes?.fullHourly,
+    pirateHourly(pirateRes),
+    metRes?.hourly,
+  ].filter(hasUsableHourly);
+
+  if (!currentOptions.length || !dailyOptions.length || !hourlyOptions.length) {
     throw new Error("All forecast providers failed");
   }
 
+  const currentBase = currentOptions[0];
+  const dailyBase = dailyOptions[0];
   const todayBase = dailyBase[0];
-  const todayPirate = pirateRes?.daily?.find(
-    (d) => forecastDateLocalKey(d.date) === forecastDateLocalKey(todayBase.date),
-  ) ?? pirateRes?.daily?.[0];
+  const todayPirate = getDailyForDate(pirateDaily(pirateRes), todayBase.date) ?? pirateDaily(pirateRes)[0];
+  const todayMet = getDailyForDate(metRes?.daily, todayBase.date) ?? metRes?.daily?.[0];
 
   const currentTempMetric = buildMetric({
     metricName: "Current temperature",
     conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    aggregation: "auto",
     values: {
       [OPEN_METEO]: omRes?.current.temp,
       [PIRATE]: pirateRes?.current?.temp,
+      [MET_NORWAY]: metRes?.current?.temp,
     },
   });
   const feelsLikeMetric = buildMetric({
     metricName: "Feels-like temperature",
     conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    aggregation: "auto",
     values: {
       [OPEN_METEO]: omRes?.current.feelsLike,
       [PIRATE]: pirateRes?.current?.feelsLike,
+      [MET_NORWAY]: metRes?.current?.feelsLike,
     },
   });
   const dailyHighMetric = buildMetric({
     metricName: "Daily high",
     conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    aggregation: "auto",
     values: {
-      [OPEN_METEO]: todayBase.high,
+      [OPEN_METEO]: getDailyForDate(omRes?.daily, todayBase.date)?.high,
       [PIRATE]: todayPirate?.high,
       [WEATHER_GOV]: nws?.highF,
+      [MET_NORWAY]: todayMet?.high,
     },
   });
   const dailyLowMetric = buildMetric({
     metricName: "Daily low",
     conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    aggregation: "auto",
     values: {
-      [OPEN_METEO]: todayBase.low,
+      [OPEN_METEO]: getDailyForDate(omRes?.daily, todayBase.date)?.low,
       [PIRATE]: todayPirate?.low,
       [WEATHER_GOV]: nws?.lowF,
+      [MET_NORWAY]: todayMet?.low,
     },
   });
   const rainChanceMetric = buildMetric({
     metricName: "Rain chance",
     conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+    aggregation: "max",
     values: {
-      [OPEN_METEO]: todayBase.rainChance,
+      [OPEN_METEO]: getDailyForDate(omRes?.daily, todayBase.date)?.rainChance,
       [PIRATE]: todayPirate?.rainChance,
       [WEATHER_GOV]: nws?.rainPct,
+      [MET_NORWAY]: todayMet?.rainChance,
     },
   });
 
-  const mergedHourly = mergeHourly(fullHourlyBase, pirateRes?.hourly ?? [], !!omRes);
+  const mergedHourly = mergeHourly([
+    { source: OPEN_METEO, hourly: omRes?.fullHourly ?? [] },
+    { source: PIRATE, hourly: pirateHourly(pirateRes) },
+    { source: MET_NORWAY, hourly: metRes?.hourly ?? [] },
+  ]);
+
   const firstHourly = mergedHourly.find((h) => new Date(h.time).getTime() >= Date.now() - 30 * 60 * 1000);
-  const hourlyOpen = omRes?.fullHourly.find((h) => h.time === firstHourly?.time);
-  const hourlyPirate = pirateRes?.hourly.find((h) => h.time === firstHourly?.time);
+  const hourlyOpen = getHourlyForTime(omRes?.fullHourly, firstHourly?.time);
+  const hourlyPirate = getHourlyForTime(pirateHourly(pirateRes), firstHourly?.time);
+  const hourlyMet = getHourlyForTime(metRes?.hourly, firstHourly?.time);
 
   const hourlyTempMetric = buildMetric({
     metricName: "Hourly temperature",
     conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    aggregation: "auto",
     values: {
       [OPEN_METEO]: hourlyOpen?.temp,
       [PIRATE]: hourlyPirate?.temp,
+      [MET_NORWAY]: hourlyMet?.temp,
     },
   });
   const hourlyFeelsLikeMetric = buildMetric({
     metricName: "Hourly feels-like temperature",
     conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+    aggregation: "auto",
     values: {
       [OPEN_METEO]: hourlyOpen?.feelsLike,
       [PIRATE]: hourlyPirate?.feelsLike,
+      [MET_NORWAY]: hourlyMet?.feelsLike,
     },
   });
   const hourlyRainChanceMetric = buildMetric({
     metricName: "Hourly precipitation chance",
     conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+    aggregation: "max",
     values: {
       [OPEN_METEO]: hourlyOpen?.rainChance,
       [PIRATE]: hourlyPirate?.rainChance,
+      [MET_NORWAY]: hourlyMet?.rainChance,
     },
   });
   const uvIndexMetric = buildMetric({
     metricName: "UV index",
     conflictThreshold: CONFLICT_THRESHOLDS.uvIndex,
+    aggregation: "max",
     values: {
-      [OPEN_METEO]: firstHourly?.uvIndex,
+      [OPEN_METEO]: hourlyOpen?.uvIndex,
       [PIRATE]: hourlyPirate?.uvIndex,
+      [MET_NORWAY]: hourlyMet?.uvIndex,
     },
   });
   const alertsMetric = buildMetric({
     metricName: "Weather alerts",
     conflictThreshold: 1,
+    aggregation: "max",
     values: {
       [WEATHER_GOV]: nws ? (nws.alerts?.length ?? 0) : undefined,
     },
   });
 
   const sourceDetails = buildSourceDetails({
-    providersResponded: [
-      ...(omRes ? [OPEN_METEO] : []),
-      ...(pirateUsable ? [PIRATE] : []),
-      ...(nws ? [WEATHER_GOV] : []),
-    ],
+    providersResponded: providersUsed,
     metrics: {
       currentTemp: currentTempMetric,
       feelsLike: feelsLikeMetric,
@@ -289,45 +390,66 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
     ...currentBase,
     temp: currentTempMetric.value ?? currentBase.temp,
     feelsLike: feelsLikeMetric.value ?? currentBase.feelsLike,
+    weatherCode: weatherCodeFromProviders(
+      omRes?.current.weatherCode,
+      pirateRes?.current?.weatherCode,
+      metRes?.current?.weatherCode,
+      currentBase.weatherCode,
+    ),
+    isDay: isDayFromCurrent(
+      omRes?.current.isDay,
+      pirateRes?.current?.isDay,
+      metRes?.current?.isDay,
+      currentBase.isDay,
+    ),
   };
 
   const blendedDaily = dailyBase.map((d, i) => {
-    const pirateDay = pirateRes?.daily?.find(
-      (p) => forecastDateLocalKey(p.date) === forecastDateLocalKey(d.date),
-    );
+    const openDay = getDailyForDate(omRes?.daily, d.date);
+    const pirateDay = getDailyForDate(pirateDaily(pirateRes), d.date);
+    const metDay = getDailyForDate(metRes?.daily, d.date);
+
     const highMetric = buildMetric({
       metricName: "Daily high",
       conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+      aggregation: "auto",
       values: {
-        [OPEN_METEO]: omRes ? d.high : undefined,
+        [OPEN_METEO]: openDay?.high,
         [PIRATE]: pirateDay?.high,
         [WEATHER_GOV]: i === 0 ? nws?.highF : undefined,
+        [MET_NORWAY]: metDay?.high,
       },
     });
     const lowMetric = buildMetric({
       metricName: "Daily low",
       conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+      aggregation: "auto",
       values: {
-        [OPEN_METEO]: omRes ? d.low : undefined,
+        [OPEN_METEO]: openDay?.low,
         [PIRATE]: pirateDay?.low,
         [WEATHER_GOV]: i === 0 ? nws?.lowF : undefined,
+        [MET_NORWAY]: metDay?.low,
       },
     });
     const feelsHighMetric = buildMetric({
       metricName: "Feels-like daily high",
       conflictThreshold: CONFLICT_THRESHOLDS.temperature,
+      aggregation: "auto",
       values: {
-        [OPEN_METEO]: omRes ? d.feelsHigh : undefined,
+        [OPEN_METEO]: openDay?.feelsHigh,
         [PIRATE]: pirateDay?.feelsHigh,
+        [MET_NORWAY]: metDay?.feelsHigh,
       },
     });
     const rainMetric = buildMetric({
       metricName: "Rain chance",
       conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
+      aggregation: "max",
       values: {
-        [OPEN_METEO]: omRes ? d.rainChance : undefined,
+        [OPEN_METEO]: openDay?.rainChance,
         [PIRATE]: pirateDay?.rainChance,
         [WEATHER_GOV]: i === 0 ? nws?.rainPct : undefined,
+        [MET_NORWAY]: metDay?.rainChance,
       },
     });
 
@@ -337,6 +459,12 @@ export async function fetchForecast(lat: number, lon: number): Promise<ForecastB
       low: lowMetric.value ?? d.low,
       feelsHigh: feelsHighMetric.value ?? d.feelsHigh,
       rainChance: rainMetric.value ?? d.rainChance,
+      weatherCode: weatherCodeFromProviders(
+        openDay?.weatherCode,
+        pirateDay?.weatherCode,
+        metDay?.weatherCode,
+        d.weatherCode,
+      ),
     };
   });
 
@@ -375,66 +503,73 @@ function legacyConfidence(varyingMetricCount: number, sourceCount: number): Conf
 // ---- Hourly merge + period computation -----------------------------------
 
 function mergeHourly(
-  primary: HourlyPoint[],
-  pirate: PirateNormalized["hourly"],
-  primaryIsOpenMeteo: boolean,
+  providers: Array<{ source: string; hourly: HourlyPoint[] }>,
 ): HourlyPoint[] {
-  if (!pirate.length) return primary;
-  const byTime = new Map<string, HourlyPoint>();
-  for (const h of primary) byTime.set(h.time, h);
-  for (const p of pirate) {
-    const existing = byTime.get(p.time);
-    if (existing) {
+  const byTime = new Map<string, Record<string, HourlyPoint>>();
+
+  for (const provider of providers) {
+    for (const point of provider.hourly) {
+      if (!point.time) continue;
+      const existing = byTime.get(point.time) ?? {};
+      existing[provider.source] = point;
+      byTime.set(point.time, existing);
+    }
+  }
+
+  return Array.from(byTime.entries())
+    .map(([time, sourcePoints]) => {
+      const points = Object.values(sourcePoints);
+      const first = points[0];
+
       const tempMetric = buildMetric({
         metricName: "Hourly temperature",
         conflictThreshold: CONFLICT_THRESHOLDS.temperature,
-        values: {
-          [OPEN_METEO]: primaryIsOpenMeteo ? existing.temp : undefined,
-          [PIRATE]: p.temp,
-        },
+        aggregation: "auto",
+        values: Object.fromEntries(
+          Object.entries(sourcePoints).map(([source, point]) => [source, point.temp]),
+        ),
       });
       const feelsMetric = buildMetric({
         metricName: "Hourly feels-like temperature",
         conflictThreshold: CONFLICT_THRESHOLDS.temperature,
-        values: {
-          [OPEN_METEO]: primaryIsOpenMeteo ? existing.feelsLike : undefined,
-          [PIRATE]: p.feelsLike,
-        },
+        aggregation: "auto",
+        values: Object.fromEntries(
+          Object.entries(sourcePoints).map(([source, point]) => [source, point.feelsLike]),
+        ),
       });
       const rainMetric = buildMetric({
         metricName: "Hourly precipitation chance",
         conflictThreshold: CONFLICT_THRESHOLDS.rainChance,
-        values: {
-          [OPEN_METEO]: primaryIsOpenMeteo ? existing.rainChance : undefined,
-          [PIRATE]: p.rainChance,
-        },
+        aggregation: "max",
+        values: Object.fromEntries(
+          Object.entries(sourcePoints).map(([source, point]) => [source, point.rainChance]),
+        ),
       });
       const uvMetric = buildMetric({
         metricName: "UV index",
         conflictThreshold: CONFLICT_THRESHOLDS.uvIndex,
-        values: {
-          [OPEN_METEO]: primaryIsOpenMeteo ? existing.uvIndex : undefined,
-          [PIRATE]: p.uvIndex,
-        },
+        aggregation: "max",
+        values: Object.fromEntries(
+          Object.entries(sourcePoints).map(([source, point]) => [source, point.uvIndex]),
+        ),
       });
 
-      existing.temp = tempMetric.value ?? existing.temp ?? p.temp;
-      existing.feelsLike = feelsMetric.value ?? existing.feelsLike ?? p.feelsLike;
-      existing.rainChance = rainMetric.value ?? existing.rainChance ?? p.rainChance;
-      existing.uvIndex = uvMetric.value ?? existing.uvIndex ?? p.uvIndex;
-    } else {
-      byTime.set(p.time, {
-        time: p.time,
-        rainChance: p.rainChance,
-        temp: p.temp,
-        feelsLike: p.feelsLike,
-        uvIndex: p.uvIndex,
-      });
-    }
-  }
-  return Array.from(byTime.values()).sort(
-    (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
-  );
+      return {
+        ...first,
+        time,
+        temp: tempMetric.value ?? first.temp,
+        feelsLike: feelsMetric.value ?? first.feelsLike,
+        rainChance: rainMetric.value ?? first.rainChance,
+        uvIndex: uvMetric.value ?? first.uvIndex,
+        weatherCode: weatherCodeFromProviders(
+          sourcePoints[OPEN_METEO]?.weatherCode,
+          sourcePoints[PIRATE]?.weatherCode,
+          sourcePoints[MET_NORWAY]?.weatherCode,
+          first.weatherCode,
+        ),
+      };
+    })
+    .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
 }
 
 function periodForHour(h: number): "morning" | "afternoon" | "evening" | null {
