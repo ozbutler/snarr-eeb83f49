@@ -1,4 +1,4 @@
-import type { Confidence } from "@/lib/weather/types";
+import type { Confidence, ForecastSourceDetails, WeatherMetric } from "@/lib/weather/types";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { compatibilitySourceLabel } from "@/components/wb/ConfidenceSourceBadge";
 
@@ -14,9 +14,77 @@ const MAP: Record<Confidence, { cls: string }> = {
   },
 };
 
-export function ConfidenceBadge({ level, sources }: { level: Confidence; sources?: string[]; compact?: boolean }) {
+export function formatProviderList(sources?: string[]) {
+  if (!sources || sources.length === 0) return "no providers";
+  if (sources.length === 1) return sources[0];
+  if (sources.length === 2) return `${sources[0]} and ${sources[1]}`;
+  return `${sources.slice(0, -1).join(", ")}, and ${sources[sources.length - 1]}`;
+}
+
+function metricRange(metric?: WeatherMetric, suffix = "") {
+  const values = Object.values(metric?.rawValues ?? {}).filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  const min = Math.round(Math.min(...values));
+  const max = Math.round(Math.max(...values));
+  if (min === max) return `${min}${suffix}`;
+  return `${min}${suffix} to ${max}${suffix}`;
+}
+
+function getLargestSpreadMetric(details?: ForecastSourceDetails) {
+  if (!details?.metrics) return null;
+
+  return Object.values(details.metrics)
+    .map((metric) => {
+      const values = Object.values(metric.rawValues ?? {}).filter((value) => Number.isFinite(value));
+      const spread = values.length > 1 ? Math.max(...values) - Math.min(...values) : 0;
+      return { metric, spread };
+    })
+    .filter(({ spread }) => spread > 0)
+    .sort((a, b) => b.spread - a.spread)[0]?.metric ?? null;
+}
+
+export function getConfidenceExplanation(level: Confidence, details?: ForecastSourceDetails) {
+  const sourceCount = details?.providersResponded?.length ?? 0;
+  const providerText = `${sourceCount || 1} forecast provider${sourceCount === 1 ? "" : "s"} compared.`;
+  const tempRange = metricRange(details?.metrics.currentTemp, "°F");
+  const highRange = metricRange(details?.metrics.dailyHigh, "°F");
+  const rainRange = metricRange(details?.metrics.rainChance, "%");
+  const largest = getLargestSpreadMetric(details);
+
+  const agreement = level === "high"
+    ? "Providers are closely aligned on the main forecast."
+    : level === "moderate"
+      ? "Providers mostly agree, with some small differences."
+      : largest
+        ? `Providers differ most on ${largest.metricName.toLowerCase()}.`
+        : "Providers differ on one or more forecast details.";
+
+  const ranges = [
+    highRange ? `High: ${highRange}` : null,
+    tempRange ? `Current: ${tempRange}` : null,
+    rainRange ? `Rain: ${rainRange}` : null,
+  ].filter(Boolean).join(" · ");
+
+  return {
+    providerText,
+    agreement,
+    ranges,
+  };
+}
+
+export function ConfidenceBadge({
+  level,
+  sources,
+  details,
+}: {
+  level: Confidence;
+  sources?: string[];
+  details?: ForecastSourceDetails;
+  compact?: boolean;
+}) {
   const m = MAP[level];
   const label = compatibilitySourceLabel(level, sources);
+  const explanation = getConfidenceExplanation(level, details);
 
   return (
     <Popover>
@@ -33,12 +101,16 @@ export function ConfidenceBadge({ level, sources }: { level: Confidence; sources
       <PopoverContent side="bottom" align="start" className="w-72 text-xs space-y-2">
         <div className="font-medium text-sm">Weather source details</div>
         <p className="text-muted-foreground leading-relaxed">
-          Snarr compares available weather providers for temperature, rain chance, and feels-like conditions.
-          Some metrics may use fewer sources depending on provider availability.
+          {explanation.providerText} {explanation.agreement}
         </p>
+        {explanation.ranges ? (
+          <p className="text-muted-foreground leading-relaxed">
+            {explanation.ranges}.
+          </p>
+        ) : null}
         {sources && sources.length > 0 && (
           <p className="text-muted-foreground leading-relaxed">
-            Providers used: {sources.join(" and ")}.
+            Providers used: {formatProviderList(sources)}.
           </p>
         )}
       </PopoverContent>
